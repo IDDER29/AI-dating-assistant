@@ -1,67 +1,67 @@
-# AI-Ассистент для Telegram-бота знакомств
+# AI Assistant for Telegram Dating Bot
 
-Этот проект — продвинутый AI-ассистент на Python, созданный для автоматизации взаимодействия с Telegram-ботом знакомств `@leomatchbot`. Это полноценный цифровой аватар, который обучается определенной личности для ведения реалистичных, человекоподобных диалогов. Конечная цель ассистента — добиться, чтобы собеседник сам проявил инициативу и предложил встретиться.
+This project is an advanced AI assistant in Python, designed to automate interaction with the Telegram dating bot `@leomatchbot`. It's a full-fledged digital avatar that learns a specific personality to conduct realistic, human-like dialogues. The ultimate goal of the assistant is to make the interlocutor take the initiative and suggest meeting.
 
-Проект был разработан как социальный и технический эксперимент для исследования границ применения AI в человеческом общении и проверки гипотезы, сможет ли машина эффективно воспроизвести сложный и тонкий стиль коммуникации.
+The project was developed as a social and technical experiment to explore the boundaries of AI application in human communication and to test the hypothesis of whether a machine can effectively reproduce a complex and subtle communication style.
 
-## Ключевые Возможности
+## Key Features
 
--   **"Двухмозговая" Архитектура:** Скрипт работает с двумя различными "мозгами" на основе AI:
-    1.  **"Разведчик":** Работает внутри бота знакомств, автоматически фильтрует анкеты по качеству описания и генерирует уникальные, остроумные первые сообщения.
-    2.  **"Собеседник":** Активируется в личных чатах, использует глубоко персонализированный образ для ведения бесед, запоминания контекста и направления диалога к поставленной цели.
+-   **"Dual-Brain" Architecture:** The script works with two different AI-based "brains":
+    1.  **"Scout":** Works inside the dating bot, automatically filters profiles by quality of description and generates unique, witty first messages.
+    2.  **"Interlocutor":** Activated in private chats, uses a deeply personalized persona to lead conversations, remember context, and steer the dialogue toward the set goal.
 
--   **Глубокая Персонализация:** Личность AI не является шаблонной. Она строится на основе детального "досье", заложенного в системный промпт: профессия, хобби, чувство юмора, вкусы и даже личные истории. Это делает его ответы последовательными и правдоподобными.
+-   **Deep Personalization:** The AI personality is not template-based. It's built on a detailed "dossier" laid out in the system prompt: profession, hobbies, sense of humor, tastes, and even personal stories. This makes its responses consistent and plausible.
 
--   **Движок Гипер-реалистичного Взаимодействия:** Чтобы избежать "машинного" общения, ассистент использует несколько продвинутых техник:
-    *   **"Живой" Стиль Письма:** Следует неформальному стилю общения (без точек в конце, с использованием сленга) и применяет пост-обработку для очистки ответов AI от "академического" языка.
-    *   **Отправка "Лесенкой":** Имитирует человеческую манеру печатать, иногда разбивая одну мысль на несколько коротких, быстро отправленных сообщений.
-    *   **Динамическая Задержка Ответа:** Рассчитывает время ответа на основе контекста. Быстрые ответы для активных диалогов и более длительные, реалистичные задержки (от нескольких минут до часов) при возобновлении беседы.
-    *   **"Умный Таймер" (Debounce):** Если пользователь отправляет несколько сообщений подряд, AI дожидается паузы, прежде чем составить единый, целостный ответ на весь блок сообщений.
-    *   **Статус "Прочитано" и Индикация Набора:** Мгновенно помечает входящие сообщения как прочитанные (две галочки) и показывает статус "печатает..." перед ответом, создавая эффект присутствия.
+-   **Hyper-realistic Interaction Engine:** To avoid "machine-like" communication, the assistant uses several advanced techniques:
+    *   **"Live" Writing Style:** Follows an informal communication style (no periods at the end, using slang) and applies post-processing to clean up AI responses from "academic" language.
+    *   **"Ladder" Sending:** Mimics the human way of typing, sometimes breaking one thought into several short, quickly sent messages.
+    *   **Dynamic Response Delay:** Calculates response time based on context. Fast responses for active dialogues and more realistic delays (from a few minutes to hours) when resuming a conversation.
+    *   **"Smart Timer" (Debounce):** If the user sends several messages in a row, the AI waits for a pause before composing a single, coherent response to the entire block of messages.
+    *   **"Read" Status and Typing Indication:** Instantly marks incoming messages as read (two checkmarks) and shows the "typing..." status before responding, creating an effect of presence.
 
--   **Надежность и Автономность:**
-    *   **"Белый Список":** Позволяет оператору вручную исключать определенных пользователей из обработки AI, обеспечивая плавный переход к ручному общению.
-    *   **Постоянная Память:** Сохраняет все истории диалогов в JSON-файл, что позволяет боту выдерживать перезапуски и помнить каждую беседу.
-    *   **Обработка Лимитов API:** Корректно обрабатывает ошибки ограничения запросов от API, ожидая рекомендованное время перед повторной попыткой.
-    *   **Работа 24/7:** Скрипт предназначен для развертывания на сервере (например, Ubuntu) для непрерывной автономной работы.
+-   **Reliability and Autonomy:**
+    *   **"Whitelist":** Allows the operator to manually exclude certain users from AI processing, ensuring a smooth transition to manual communication.
+    *   **Persistent Memory:** Saves all dialogue histories in a JSON file, allowing the bot to withstand restarts and remember every conversation.
+    *   **API Limit Handling:** Correctly handles request limiting errors from the API, waiting for the recommended time before retrying.
+    *   **24/7 Operation:** The script is designed for deployment on a server (e.g., Ubuntu) for continuous autonomous operation.
 
-## Технологический Стек
+## Technology Stack
 
--   **Язык:** Python 3.10+
--   **Основная библиотека:** [Pyrogram](https://pyrogram.org/) (для асинхронного взаимодействия с Telegram API)
--   **AI Модель:** Google Gemini 1.5 Flash
--   **Зависимости:** `google-generativeai`, `tgcrypto`, `python-dotenv`
+-   **Language:** Python 3.10+
+-   **Main library:** [Pyrogram](https://pyrogram.org/) (for asynchronous interaction with the Telegram API)
+-   **AI Model:** Google Gemini 1.5 Flash
+-   **Dependencies:** `google-generativeai`, `tgcrypto`, `python-dotenv`
 
-## Установка и Настройка
+## Installation and Setup
 
-1.  **Клонируйте репозиторий:**
+1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/ваш-логин/название-репозитория.git
-    cd название-репозитория
+    git clone https://github.com/your-login/repository-name.git
+    cd repository-name
     ```
 
-2.  **Создайте виртуальное окружение (рекомендуется):**
+2.  **Create a virtual environment (recommended):**
     ```bash
     python3 -m venv venv
     source venv/bin/activate
     ```
 
-3.  **Установите зависимости:**
+3.  **Install dependencies:**
     ```bash
     pip install -r requirements.txt
     ```
 
-4.  **Настройте ваши ключи:**
-    *   Скопируйте файл с примером переменных окружения: `cp .env.example .env`
-    *   Откройте файл `.env` в текстовом редакторе (например, `nano .env`).
-    *   Заполните ваши `TELEGRAM_API_ID`, `TELEGRAM_API_HASH` (их можно получить на [my.telegram.org](https://my.telegram.org)) и `GEMINI_API_KEY` (его можно получить в [Google AI Studio](https://ai.google.dev/)).
+4.  **Configure your keys:**
+    *   Copy the example environment variables file: `cp .env.example .env`
+    *   Open the `.env` file in a text editor (e.g., `nano .env`).
+    *   Fill in your `TELEGRAM_API_ID`, `TELEGRAM_API_HASH` (get them at [my.telegram.org](https://my.telegram.org)), and `GEMINI_API_KEY` (get it at [Google AI Studio](https://ai.google.dev/)).
 
-5.  **(Опционально) Настройте личность AI:**
-    *   Откройте `src/main.py` и тщательно отредактируйте переменные `FIRST_MESSAGE_PROMPT` и `CONVERSATION_SYSTEM_PROMPT`, чтобы определить личность и цели вашего AI.
+5.  **(Optional) Configure AI Personality:**
+    *   Open `src/config.py` and carefully edit the `FIRST_MESSAGE_PROMPT` and `CONVERSATION_SYSTEM_PROMPT` variables to define your AI's personality and goals.
 
-6.  **(Опционально) Добавьте пользователей в "Белый список":**
-    *   Узнайте Telegram User ID нужных людей (например, переслав их сообщение боту `@userinfobot`).
-    *   Добавьте их числовые ID в файл `data/whitelist.json`.
+6.  **(Optional) Add users to "Whitelist":**
+    *   Find out the Telegram User ID of the desired people (e.g., by forwarding their message to the `@userinfobot` bot).
+    *   Add their numerical IDs to the `data/whitelist.json` file.
     ```json
     [
         123456789,
@@ -69,26 +69,26 @@
     ]
     ```
 
-## Запуск Бота
+## Running the Bot
 
-1.  **Первый запуск для авторизации:** Запустите скрипт напрямую, чтобы войти в ваш Telegram-аккаунт. Pyrogram запросит номер телефона и код подтверждения.
+1.  **First run for authorization:** Run the script directly to log in to your Telegram account. Pyrogram will request a phone number and a confirmation code.
     ```bash
     python3 src/main.py
     ```
-    После успешного входа будет создан файл `.session`. Можно остановить скрипт (`Ctrl+C`).
+    After successful login, a `.session` file will be created. You can stop the script (`Ctrl+C`).
 
-2.  **Запуск в фоновом режиме для работы 24/7:** Для непрерывной работы на сервере лучше всего использовать терминальный мультиплексор, например `tmux`.
+2.  **Run in background for 24/7 operation:** For continuous operation on a server, it's best to use a terminal multiplexer like `tmux`.
     ```bash
-    # Запустить новую tmux-сессию
+    # Start a new tmux session
     tmux new -s dating_bot
 
-    # Внутри сессии запустить скрипт
+    # Run the script inside the session
     python3 src/main.py
 
-    # Отсоединиться от сессии можно, нажав Ctrl+B, а затем D. Скрипт продолжит работать.
-    # Чтобы вернуться в сессию позже: tmux attach -t dating_bot
+    # You can detach from the session by pressing Ctrl+B, then D. The script will continue running.
+    # To return to the session later: tmux attach -t dating_bot
     ```
 
-## Дисклеймер
+## Disclaimer
 
-Этот проект является образовательным экспериментом в области AI и автоматизации. Пожалуйста, используйте его ответственно и этично. Автор не несет ответственности за результаты его использования.
+This project is an educational experiment in AI and automation. Please use it responsibly and ethically. The author is not responsible for the results of its use.

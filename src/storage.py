@@ -14,17 +14,17 @@ def load_json_data(filepath: str | Path, default_data):
                 return json.load(f)
         except json.JSONDecodeError as e:
             logging.error(
-                f"Ошибка декодирования JSON в {path}: {e}. Файл будет перезаписан."
+                f"JSON decoding error in {path}: {e}. File will be overwritten."
             )
 
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("w", encoding="utf-8") as f:
             json.dump(default_data, f, ensure_ascii=False, indent=4)
-        logging.info(f"Создан новый файл {path} с данными по умолчанию.")
+        logging.info(f"Created new file {path} with default data.")
         return default_data
     except IOError as e:
-        logging.error(f"Не удалось создать/записать файл {path}: {e}")
+        logging.error(f"Failed to create/write file {path}: {e}")
         return default_data
 
 
@@ -36,22 +36,22 @@ def save_json_data(filepath: str | Path, data):
         with path.open("w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=4)
     except IOError as e:
-        logging.error(f"Ошибка сохранения {path}: {e}")
+        logging.error(f"Error saving {path}: {e}")
 
 
 def load_histories(state):
     state.conversation_histories = load_json_data(HISTORY_PATH, {})
-    logging.info("Истории диалогов загружены.")
+    logging.info("Conversation histories loaded.")
 
 
 def save_histories(state):
     save_json_data(HISTORY_PATH, state.conversation_histories)
-    logging.info("Истории диалогов сохранены.")
+    logging.info("Conversation histories saved.")
 
 
 def load_whitelist(state):
     whitelist_list = load_json_data(WHITELIST_PATH, [])
     state.whitelist_ids = set(whitelist_list)
     logging.info(
-        f"Белый список загружен. Пользователей в списке: {len(state.whitelist_ids)}."
+        f"Whitelist loaded. Users in list: {len(state.whitelist_ids)}."
     )

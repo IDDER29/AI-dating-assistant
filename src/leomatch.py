@@ -14,18 +14,18 @@ from utils import get_message_text
 
 async def leomatch_handler(client, message, state):
     """Dispatch messages coming from the dating bot."""
-    event_type = "ОТРЕДАКТИРОВАНО" if message.edit_date else "НОВОЕ"
-    logging.info(f"[ДАЙВИНЧИК-ДИСПЕТЧЕР] Получено событие (Тип: {event_type})")
+    event_type = "EDITED" if message.edit_date else "NEW"
+    logging.info(f"[LEOMATCH-DISPATCHER] Received event (Type: {event_type})")
     text = get_message_text(message)
     if not text:
-        logging.info("[ДАЙВИНЧИК-ДИСПЕТЧЕР] Пустое событие, игнорирую.")
+        logging.info("[LEOMATCH-DISPATCHER] Empty event, ignoring.")
         return
 
     if ANKET_PATTERN.match(text):
         if state.leomatch_task and not state.leomatch_task.done():
             state.leomatch_task.cancel()
             logging.info(
-                "[ДАЙВИНЧИК-ДИСПЕТЧЕР] Пришла новая анкета. Старая задача отменена."
+                "[LEOMATCH-DISPATCHER] New profile arrived. Old task cancelled."
             )
         state.leomatch_task = asyncio.create_task(
             process_leomatch_task(client, message, state)
@@ -43,36 +43,40 @@ async def process_leomatch_task(client, message, state):
         if time_since_last_action < ACTION_COOLDOWN_SECONDS:
             wait_time = ACTION_COOLDOWN_SECONDS - time_since_last_action
             logging.info(
-                f"[ДАЙВИНЧИК-ЗАДАЧА] КД активен. Ожидаю {wait_time:.1f} сек..."
+                f"[LEOMATCH-TASK] Cooldown active. Waiting {wait_time:.1f} sec..."
             )
             await asyncio.sleep(wait_time)
 
         text = get_message_text(message)
-        logging.info("[ДАЙВИНЧИК-ЗАДАЧА] КД прошел. Обрабатываю последнюю анкету.")
+        logging.info("[LEOMATCH-TASK] Cooldown over. Processing last profile.")
         await process_leomatch_message(client, text, state)
     except asyncio.CancelledError:
         logging.info(
-            "[ДАЙВИНЧИК-ЗАДАЧА] Задача отменена (пришла более свежая анкета)."
+            "[LEOMATCH-TASK] Task cancelled (fresher profile arrived)."
         )
     except Exception as e:
         logging.error(
-            f"[ДАЙВИНЧИК-ЗАДАЧА] Ошибка в задаче обработки анкеты: {e}",
+            f"[LEOMATCH-TASK] Error in profile processing task: {e}",
             exc_info=True,
         )
 
 
 async def process_leomatch_message(client, text: str, state, is_startup: bool = False):
     """Execute direct actions in the dating bot."""
-    logging.info(f"[ДАЙВИНЧИК-ИСПОЛНИТЕЛЬ] Анализ текста: \"{text[:120]}\"")
+    text_str = str(text) if text else ""
+    # use a local variable to help inference
+    # truncate for logging
+    truncated_text = text_str[:120] if len(text_str) > 120 else text_str
+    logging.info(f"[LEOMATCH-EXECUTOR] Analyzing text: \"{truncated_text}\"")
 
     if any(phrase in text for phrase in KNOWN_SYSTEM_MESSAGES):
         logging.info(
-            "[ДАЙВИНЧИК-ИСПОЛНИТЕЛЬ] Обнаружено системное/рекламное сообщение. Игнорирую."
+            "[LEOMATCH-EXECUTOR] System/ad message detected. Ignoring."
         )
         return
 
-    if "1. Смотреть анкеты" in text:
-        logging.info("[ДАЙВИНЧИК-ИСПОЛНИТЕЛЬ] Главное меню. Нажимаю '1'.")
+    if "1. View profiles" in text:
+        logging.info("[LEOMATCH-EXECUTOR] Main menu. Pressing '1'.")
         await asyncio.sleep(2)
         await client.send_message(BOT_USERNAME, "1")
         return
@@ -81,46 +85,46 @@ async def process_leomatch_message(client, text: str, state, is_startup: bool = 
     if match:
         state.last_seen_anket_text = text
         logging.info(
-            f"[ДАЙВИНЧИК-ИСПОЛНИТЕЛЬ] Анкета '{match.group(1).strip()}' сохранена в память."
+            f"[LEOMATCH-EXECUTOR] Profile '{match.group(1).strip()}' saved to memory."
         )
         description = match.group(4)
         if description and len(description.strip()) > 10:
-            logging.info("[ДАЙВИНЧИК-ИСПОЛНИТЕЛЬ] Анкета с описанием. Лайкаю...")
+            logging.info("[LEOMATCH-EXECUTOR] Profile with description. Liking...")
             await asyncio.sleep(3)
             await client.send_message(BOT_USERNAME, "💌 / 📹")
         else:
-            logging.info("[ДАЙВИНЧИК-ИСПОЛНИТЕЛЬ] Анкета без описания. Дизлайкаю...")
+            logging.info("[LEOMATCH-EXECUTOR] Profile without description. Disliking...")
             await asyncio.sleep(3)
             await client.send_message(BOT_USERNAME, "👎")
         state.last_action_time = datetime.datetime.now(datetime.timezone.utc)
         logging.info(
-            f"[ДАЙВИНЧИК-ИСПОЛНИТЕЛЬ] Кулдаун на {ACTION_COOLDOWN_SECONDS} сек. запущен."
+            f"[LEOMATCH-EXECUTOR] Cooldown for {ACTION_COOLDOWN_SECONDS} sec. started."
         )
         return
 
-    if "Напиши сообщение для этого пользователя" in text:
+    if "Write a message for this user" in text:
         if state.last_seen_anket_text:
-            logging.info("[ДАЙВИНЧИК-ИСПОЛНИТЕЛЬ] Запрос на сообщение. Генерирую...")
+            logging.info("[LEOMATCH-EXECUTOR] Message request. Generating...")
             intro_message = await generate_first_message(state.last_seen_anket_text, state)
             if len(intro_message) > 300:
                 logging.warning(
-                    "[ДАЙВИНЧИК-ИСПОЛНИТЕЛЬ] AI сгенерировал слишком длинное сообщение "
-                    f"({len(intro_message)} симв). Использую запасной вариант."
+                    "[LEOMATCH-EXECUTOR] AI generated too long message "
+                    f"({len(intro_message)} chars). Using fallback."
                 )
                 intro_message = (
-                    "твоя анкета зацепила, но мой мозг сегодня бастует и пишет поэмы) "
-                    "расскажи что-нибудь о себе, чего там нет"
+                    "your profile caught my eye, but my brain is striking today and writing poems) "
+                    "tell me something about yourself that's not there"
                 )
             await asyncio.sleep(5)
             await client.send_message(BOT_USERNAME, intro_message)
             state.last_seen_anket_text = None
-            logging.info("[ДАЙВИНЧИК-ИСПОЛНИТЕЛЬ] Сообщение отправлено, память очищена.")
+            logging.info("[LEOMATCH-EXECUTOR] Message sent, memory cleared.")
         else:
             logging.warning(
-                "[ДАЙВИНЧИК-ИСПОЛНИТЕЛЬ] Запрос на сообщение, но анкета не найдена в памяти. "
-                "Игнорирую."
+                "[LEOMATCH-EXECUTOR] Message request, but profile not found in memory. "
+                "Ignoring."
             )
         return
 
     if not is_startup:
-        logging.warning(f"[ДАЙВИНЧИК-ИСПОЛНИТЕЛЬ] Нераспознанный текст: '{text}'")
+        logging.warning(f"[LEOMATCH-EXECUTOR] Unrecognized text: '{text}'")

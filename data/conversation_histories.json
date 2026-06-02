@@ -3,28 +3,28 @@
         {
             "role": "user",
             "parts": [
-                "как дела"
+                "how are things"
             ],
             "timestamp": "2025-08-02T13:32:31.555092+00:00"
         },
         {
             "role": "model",
             "parts": [
-                "да как обычно, в режиме выживания ||| нормально, ||| а у тебя"
+                "as usual, in survival mode ||| fine, ||| what about you"
             ],
             "timestamp": "2025-08-02T13:32:32.570288+00:00"
         },
         {
             "role": "user",
             "parts": [
-                "всё тоже хорошо"
+                "everything is good too"
             ],
             "timestamp": "2025-08-02T13:35:23.832443+00:00"
         },
         {
             "role": "model",
             "parts": [
-                "круто у меня сегодня дедлайн по одному проекту, прям мозг кипит от кода но зато потом можно будет спокойно прогуляться, разгрузить голову"
+                "cool i have a deadline today for a project, my brain is literally boiling from code but then i can finally take a walk and clear my head"
             ],
             "timestamp": "2025-08-02T13:35:24.575090+00:00"
         }
@@ -33,14 +33,14 @@
         {
             "role": "user",
             "parts": [
-                "ниче"
+                "nothing"
             ],
             "timestamp": "2025-08-02T13:33:03.029711+00:00"
         },
         {
             "role": "model",
             "parts": [
-                "ну и отлично |||чем занимаешься? |||надеюсь, не чем-то скучным"
+                "well that's great |||what are you up to? |||hope it's nothing boring"
             ],
             "timestamp": "2025-08-02T13:33:03.654884+00:00"
         }
@@ -49,14 +49,14 @@
         {
             "role": "user",
             "parts": [
-                "конечно,макан любимка\nкто не с нами тот под нами"
+                "of course, macan is my fav\nwho's not with us is under us"
             ],
             "timestamp": "2025-08-02T13:35:06.860581+00:00"
         },
         {
             "role": "model",
             "parts": [
-                "ага, маканчик заходит|||под настроение, конечно|||а ты что слушаешь? интересно стало"
+                "yeah, macan is nice|||under the right mood, of course|||what else do you listen to? got curious"
             ],
             "timestamp": "2025-08-02T13:35:07.563660+00:00"
         }

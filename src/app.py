@@ -6,11 +6,11 @@ from pyrogram import Client, filters
 from pyrogram.handlers import MessageHandler, EditedMessageHandler
 
 from ai_client import initialize_ai
-from config import API_ID, API_HASH, BOT_USERNAME, GEMINI_API_KEY, SESSION_NAME
-from dialog import private_chat_handler
+from config import BOT_USERNAME, SESSION_NAME, TELEGRAM_API_HASH, TELEGRAM_API_ID
+from dialog import private_handler
 from leomatch import leomatch_handler, process_leomatch_message
 from logging_setup import setup_logging
-from state import BotState
+from state import get_state
 from storage import load_histories, load_whitelist
 from utils import get_message_text
 
@@ -25,8 +25,8 @@ def initialize_app(state):
     """Validate configuration and initialize Pyrogram client."""
     if not all([API_ID, API_HASH, GEMINI_API_KEY]):
         logging.critical(
-            "КРИТИЧЕСКАЯ ОШИБКА: Отсутствуют переменные окружения TELEGRAM_API_ID, "
-            "TELEGRAM_API_HASH или GEMINI_API_KEY. Проверьте ваш .env файл."
+            "CRITICAL ERROR: Missing environment variables TELEGRAM_API_ID, "
+            "TELEGRAM_API_HASH, or GEMINI_API_KEY. Check your .env file."
         )
         raise SystemExit(1)
     state.app = Client(SESSION_NAME, api_id=API_ID, api_hash=API_HASH)
@@ -44,7 +44,7 @@ async def run():
     initialize_ai(state)
     initialize_app(state)
     if not state.model or not state.app:
-        logging.critical("Приложение не может запуститься из-за ошибки инициализации.")
+        logging.critical("Application cannot start due to initialization error.")
         return
 
     load_histories(state)
@@ -54,11 +54,11 @@ async def run():
         try:
             bot_peer = await state.app.resolve_peer(BOT_USERNAME)
         except Exception as e:
-            logging.critical(f"Не удалось найти бота @{BOT_USERNAME}: {e}")
+            logging.critical(f"Could not find bot @{BOT_USERNAME}: {e}")
             return
 
         logging.info("=" * 50)
-        logging.info("AI-Ассистент Знакомств (v37.0 'Стабильный Запуск') запущен!")
+        logging.info("AI Dating Assistant (v37.0 'Stable Launch') started!")
         logging.info("=" * 50)
 
         leomatch_cb = partial(leomatch_handler, state=state)
@@ -76,7 +76,7 @@ async def run():
                 filters.private & filters.chat(BOT_USERNAME) & ~filters.me,
             )
         )
-        logging.info(f"[СИСТЕМА] Обработчик для @{BOT_USERNAME} зарегистрирован.")
+        logging.info(f"[SYSTEM] Handler for @{BOT_USERNAME} registered.")
 
         state.app.add_handler(
             MessageHandler(
@@ -84,9 +84,9 @@ async def run():
                 filters.private & ~filters.chat(BOT_USERNAME) & ~filters.me,
             )
         )
-        logging.info("[СИСТЕМА] Обработчик для личных диалогов зарегистрирован.")
+        logging.info("[SYSTEM] Handler for private dialogues registered.")
 
-        logging.info(f"[СИСТЕМА] Анализ последнего сообщения от @{BOT_USERNAME}...")
+        logging.info(f"[SYSTEM] Analyzing last message from @{BOT_USERNAME}...")
         history = [
             msg async for msg in state.app.get_chat_history(bot_peer.user_id, limit=1)
         ]
@@ -94,8 +94,8 @@ async def run():
         if last_message and (text := get_message_text(last_message)):
             await process_leomatch_message(state.app, text, state, is_startup=True)
         else:
-            logging.info(f"[{BOT_USERNAME.upper()}] Чат пуст. Отправляю стартовую команду.")
+            logging.info(f"[{BOT_USERNAME.upper()}] Chat is empty. Sending start command.")
             await state.app.send_message(BOT_USERNAME, "1")
 
-        logging.info("[СИСТЕМА] Запуск завершен. Бот работает в двух режимах.")
+        logging.info("[SYSTEM] Startup complete. Bot is running in two modes.")
         await asyncio.Event().wait()

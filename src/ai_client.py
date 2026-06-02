@@ -21,9 +21,9 @@ def initialize_ai(state):
     try:
         genai.configure(api_key=GEMINI_API_KEY)
         state.model = genai.GenerativeModel("gemini-1.5-flash-latest")
-        logging.info("Модель Google Gemini успешно инициализирована.")
+        logging.info("Google Gemini model successfully initialized.")
     except Exception as e:
-        logging.error(f"Не удалось настроить модель Google Gemini: {e}")
+        logging.error(f"Failed to configure Google Gemini model: {e}")
         state.model = None
 
 
@@ -49,16 +49,16 @@ async def with_rate_limit_handling(api_call):
                         retry_delay = int(meta[1].seconds) + 1
                         break
             logging.warning(
-                f"Достигнут лимит API. Повторная попытка через {retry_delay} секунд..."
+                f"API limit reached. Retrying in {retry_delay} seconds..."
             )
             await asyncio.sleep(retry_delay)
-    logging.error("Не удалось выполнить запрос к API после нескольких попыток.")
+    logging.error("Failed to execute API request after several attempts.")
     return None
 
 
 async def generate_first_message(anket_text: str, state) -> str:
     """Generate the first message for a new profile."""
-    fallback_message = "твоя анкета показалась мне очень интересной, побалакаем?"
+    fallback_message = "your profile seemed very interesting, shall we chat?"
     if not state.model:
         return fallback_message
 
@@ -66,17 +66,21 @@ async def generate_first_message(anket_text: str, state) -> str:
     profile_text = match.group(4).strip() if match and match.group(4) else ""
 
     if len(profile_text) < 15:
-        profile_text = "Описание в анкете короткое или бессмысленное"
+        profile_text = "Profile description is short or meaningless"
 
     prompt = FIRST_MESSAGE_PROMPT.format(profile_text=profile_text)
-    response = await with_rate_limit_handling(lambda: state.model.generate_content(prompt))
+    # result can be a response object or None
+    result = await with_rate_limit_handling(lambda: state.model.generate_content(prompt))
 
-    return cleanup_ai_response(response.text) if response else fallback_message
+    if result and hasattr(result, "text"):
+        # casting to satisfy linter if it thinks it's a coroutine
+        return cleanup_ai_response(getattr(result, "text"))
+    return fallback_message
 
 
 async def generate_conversation_response(chat_id: int, user_message: str, state) -> str:
     """Generate a contextual reply in an existing dialog."""
-    fallback_message = "хм, что-то пошло не так, повтори"
+    fallback_message = "hm, something went wrong, repeat that"
     if not state.model:
         return fallback_message
 
@@ -95,21 +99,28 @@ async def generate_conversation_response(chat_id: int, user_message: str, state)
         ][-MAX_HISTORY_LENGTH:]
 
     history_for_api = [
-        {"role": msg["role"], "parts": msg["parts"]}
+        {"role": str(msg["role"]), "parts": list(msg["parts"])}
         for msg in state.conversation_histories[chat_id_str]
     ]
     full_prompt_history = [
         {"role": "user", "parts": [CONVERSATION_SYSTEM_PROMPT]},
-        {"role": "model", "parts": ["понял, я готов. без точек и лишней фигни"]},
-    ] + history_for_api
+        {"role": "model", "parts": ["understood, I'm ready. no periods and no extra stuff"]},
+    ]
+    full_prompt_history.extend(history_for_api)
 
-    chat_session = state.model.start_chat(history=full_prompt_history[:-1])
-    response = await with_rate_limit_handling(
-        lambda: chat_session.send_message(full_prompt_history[-1]["parts"])
+    history_to_send = list(full_prompt_history)
+    if history_to_send:
+        history_to_send.pop() # remove last user message as model expects it later
+    chat_session = state.model.start_chat(history=history_to_send)
+    # result can be a response object or None
+    last_msg = full_prompt_history[-1]
+    last_parts = last_msg.get("parts", [])
+    result = await with_rate_limit_handling(
+        lambda: chat_session.send_message(last_parts)
     )
 
-    if response:
-        ai_response = cleanup_ai_response(response.text)
+    if result and hasattr(result, "text"):
+        ai_response = cleanup_ai_response(getattr(result, "text"))
         state.conversation_histories[chat_id_str].append(
             {
                 "role": "model",

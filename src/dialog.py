@@ -21,21 +21,21 @@ async def private_chat_handler(client, message, state):
 
     if chat_id in state.whitelist_ids:
         logging.info(
-            f"[ДИСПЕТЧЕР] Пользователь {message.from_user.first_name} (ID: {chat_id}) "
-            "в белом списке. Игнорирую."
+            f"[DISPATCHER] User {message.from_user.first_name} (ID: {chat_id}) "
+            "is in whitelist. Ignoring."
         )
         return
 
     await client.read_chat_history(chat_id)
     logging.info(
-        f"[ДИСПЕТЧЕР] Сообщение от {message.from_user.first_name} помечено как прочитанное."
+        f"[DISPATCHER] Message from {message.from_user.first_name} marked as read."
     )
 
     if chat_id in state.active_dialogue_tasks:
         state.active_dialogue_tasks[chat_id].cancel()
         logging.info(
-            f"[ДИСПЕТЧЕР] Пользователь {message.from_user.first_name} написал снова. "
-            "Таймер перезапущен."
+            f"[DISPATCHER] User {message.from_user.first_name} wrote again. "
+            "Timer restarted."
         )
 
     task = asyncio.create_task(process_dialogue_task(client, message, state))
@@ -48,7 +48,7 @@ async def process_dialogue_task(client, message, state):
     user_name = message.from_user.first_name
     try:
         logging.info(
-            f"[ДИАЛОГ] Ожидаю {GRACE_PERIOD_SECONDS} сек. на случай, если {user_name} дописывает..."
+            f"[DIALOG] Waiting {GRACE_PERIOD_SECONDS} sec. in case {user_name} is typing more..."
         )
         await asyncio.sleep(GRACE_PERIOD_SECONDS)
 
@@ -69,7 +69,7 @@ async def process_dialogue_task(client, message, state):
         delay_config = REPLY_DELAY_CONFIG["active_session"]
         mode = "active_session"
         if is_new_session:
-            logging.info(f"[ДИАЛОГ] Обнаружена НОВАЯ сессия с {user_name}.")
+            logging.info(f"[DIALOG] Detected NEW session with {user_name}.")
             rand = random.random()
             config_new = REPLY_DELAY_CONFIG["new_session"]
             if rand < config_new["long"]["chance"]:
@@ -82,33 +82,33 @@ async def process_dialogue_task(client, message, state):
                 mode = "fast"
                 delay_config = config_new["fast"]
         else:
-            logging.info(f"[ДИАЛОГ] Продолжается АКТИВНАЯ сессия с {user_name}.")
+            logging.info(f"[DIALOG] Continuing ACTIVE session with {user_name}.")
 
         delay = random.randint(delay_config["min_sec"], delay_config["max_sec"])
         logging.info(
-            f"[ДИАЛОГ] Ответ для {user_name} будет отправлен через ~{delay // 60}м "
-            f"{delay % 60}с (режим: {mode})."
+            f"[DIALOG] Reply for {user_name} will be sent in ~{delay // 60}m "
+            f"{delay % 60}s (mode: {mode})."
         )
         await asyncio.sleep(delay)
 
-        logging.info(f"[ДИАЛОГ] Время вышло. Генерирую ответ для {user_name}...")
+        logging.info(f"[DIALOG] Time is up. Generating reply for {user_name}...")
         user_message = get_message_text(message)
         if not user_message:
             logging.warning(
-                f"[ДИАЛОГ] Последнее сообщение от {user_name} без текста. Отмена."
+                f"[DIALOG] Last message from {user_name} has no text. Cancelling."
             )
             return
 
         ai_response = await generate_conversation_response(chat_id, user_message, state)
 
         if "|||" in ai_response:
-            logging.info(f"[ДИАЛОГ] Ответ для {user_name} будет отправлен 'лесенкой'.")
+            logging.info(f"[DIALOG] Reply for {user_name} will be sent in 'ladder' mode.")
             parts = [p.strip() for p in ai_response.split("|||") if p.strip()]
             for part in parts:
                 typing_delay = (len(part) / TYPING_SPEED_CPS) + random.uniform(0.5, 2.0)
                 await client.send_chat_action(chat_id, enums.ChatAction.TYPING)
                 logging.info(
-                    f"[ДИАЛОГ] Имитация печати {typing_delay:.1f}с для части: '{part}'"
+                    f"[DIALOG] Simulating typing {typing_delay:.1f}s for part: '{part}'"
                 )
                 await asyncio.sleep(typing_delay)
                 await client.send_message(chat_id, part)
@@ -116,15 +116,15 @@ async def process_dialogue_task(client, message, state):
             typing_delay = (len(ai_response) / TYPING_SPEED_CPS) + random.uniform(0.5, 2.0)
             await client.send_chat_action(chat_id, enums.ChatAction.TYPING)
             logging.info(
-                f"[ДИАЛОГ] Имитация печати {typing_delay:.1f}с для сообщения: '{ai_response}'"
+                f"[DIALOG] Simulating typing {typing_delay:.1f}s for message: '{ai_response}'"
             )
             await asyncio.sleep(typing_delay)
             await client.send_message(chat_id, ai_response)
 
-        logging.info(f"[ДИАЛОГ] Полный ответ для {user_name} отправлен.")
+        logging.info(f"[DIALOG] Full reply for {user_name} sent.")
     except asyncio.CancelledError:
-        logging.info(f"[ДИСПЕТЧЕР] Задача для чата с {user_name} отменена.")
+        logging.info(f"[DISPATCHER] Task for chat with {user_name} cancelled.")
     except Exception as e:
-        logging.error(f"[ДИАЛОГ] Ошибка в задаче обработки диалога: {e}", exc_info=True)
+        logging.error(f"[DIALOG] Error in dialogue processing task: {e}", exc_info=True)
     finally:
         state.active_dialogue_tasks.pop(chat_id, None)
