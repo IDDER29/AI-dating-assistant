@@ -57,11 +57,11 @@
     *   Заполните ваши `TELEGRAM_API_ID`, `TELEGRAM_API_HASH` (их можно получить на [my.telegram.org](https://my.telegram.org)) и `GEMINI_API_KEY` (его можно получить в [Google AI Studio](https://ai.google.dev/)).
 
 5.  **(Опционально) Настройте личность AI:**
-    *   Откройте `main.py` и тщательно отредактируйте переменные `FIRST_MESSAGE_PROMPT` и `CONVERSATION_SYSTEM_PROMPT`, чтобы определить личность и цели вашего AI.
+    *   Откройте `src/main.py` и тщательно отредактируйте переменные `FIRST_MESSAGE_PROMPT` и `CONVERSATION_SYSTEM_PROMPT`, чтобы определить личность и цели вашего AI.
 
 6.  **(Опционально) Добавьте пользователей в "Белый список":**
     *   Узнайте Telegram User ID нужных людей (например, переслав их сообщение боту `@userinfobot`).
-    *   Добавьте их числовые ID в файл `whitelist.json`.
+    *   Добавьте их числовые ID в файл `data/whitelist.json`.
     ```json
     [
         123456789,
@@ -73,7 +73,7 @@
 
 1.  **Первый запуск для авторизации:** Запустите скрипт напрямую, чтобы войти в ваш Telegram-аккаунт. Pyrogram запросит номер телефона и код подтверждения.
     ```bash
-    python3 main.py
+    python3 src/main.py
     ```
     После успешного входа будет создан файл `.session`. Можно остановить скрипт (`Ctrl+C`).
 
@@ -83,7 +83,7 @@
     tmux new -s dating_bot
 
     # Внутри сессии запустить скрипт
-    python3 main.py
+    python3 src/main.py
 
     # Отсоединиться от сессии можно, нажав Ctrl+B, а затем D. Скрипт продолжит работать.
     # Чтобы вернуться в сессию позже: tmux attach -t dating_bot
