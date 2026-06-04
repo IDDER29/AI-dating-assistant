@@ -8,7 +8,7 @@ if TYPE_CHECKING:
     # Imported only during type-checking (mypy / pylance) — not at runtime.
     # Avoids circular imports and prevents loading heavy SDKs just for type hints.
     import pyrogram
-    import google.generativeai as genai
+    from google import genai
 
 
 @dataclass
@@ -47,12 +47,12 @@ class BotState:
     last_reply_times: Dict[int, datetime.datetime] = field(default_factory=dict)
     meeting_signals_detected: Set[int] = field(default_factory=set)
 
-    leomatch_task: Optional[Any] = None   # asyncio.Task
+    leomatch_task: Optional[Any] = None    # asyncio.Task
     whitelist_ids: Set[int] = field(default_factory=set)
 
     active_model_name: Optional[str] = None
-    model: Optional["genai.GenerativeModel"] = None
-    app: Optional["pyrogram.Client"] = None
+    ai_client: Optional["genai.Client"] = None   # google-genai client
+    app: Optional["pyrogram.Client"] = None       # Pyrogram/pyrofork client
 
     def __post_init__(self):
         if self.last_action_time.tzinfo is None:

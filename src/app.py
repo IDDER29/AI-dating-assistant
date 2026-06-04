@@ -139,7 +139,7 @@ async def run():
 
     initialize_ai(state)
     initialize_app(state)
-    if not state.model or not state.app:
+    if not state.ai_client or not state.app:
         logging.critical("Application cannot start due to initialisation error.")
         return
 

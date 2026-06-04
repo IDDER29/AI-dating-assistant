@@ -1,10 +1,12 @@
+from __future__ import annotations
+
 import asyncio
 import datetime
 import logging
 import re
 
-import google.generativeai as genai
-from google.api_core import exceptions as google_exceptions
+from google import genai
+from google.genai import types, errors as genai_errors
 
 from credentials import GEMINI_API_KEY
 from settings import (
@@ -23,13 +25,15 @@ from stats import record_event
 from storage import save_memories
 
 
+# ── Token estimation ──────────────────────────────────────────────────────────
+
 def _estimate_tokens(text: str) -> int:
-    """Rough token count: CHARS_PER_TOKEN_ESTIMATE chars per token (conservative for Ru/En mix)."""
+    """Rough token count: CHARS_PER_TOKEN_ESTIMATE chars/token (conservative for Ru/En)."""
     return max(1, len(text) // CHARS_PER_TOKEN_ESTIMATE)
 
 
 def _estimate_history_tokens(history: list) -> int:
-    """Estimate total tokens in a conversation history list."""
+    """Estimate total tokens across a conversation history list."""
     total = 0
     for turn in history:
         for part in turn.get("parts", []):
@@ -37,11 +41,28 @@ def _estimate_history_tokens(history: list) -> int:
     return total
 
 
+# ── SDK helpers ───────────────────────────────────────────────────────────────
+
+def _to_sdk_contents(history_dicts: list) -> list[types.Content]:
+    """
+    Convert our internal history format (list of dicts with role/parts/timestamp)
+    to the google-genai SDK's Content objects.
+    Roles are identical: 'user' and 'model'.
+    """
+    contents = []
+    for turn in history_dicts:
+        role = turn["role"]
+        parts = [types.Part(text=str(p)) for p in turn.get("parts", []) if p]
+        if parts:
+            contents.append(types.Content(role=role, parts=parts))
+    return contents
+
+
 def _record_api_call(result, call_type: str, chat_id_str: str = ""):
     """
-    Read token usage metadata from a Gemini API response and record to stats.
-    Gemini response objects expose usage_metadata with prompt/response/total token counts.
+    Read token usage from a Gemini response and record to stats.
     Safe to call with result=None (records a failed call).
+    usage_metadata field names are the same in google-genai as in google-generativeai.
     """
     if result is None:
         record_event("api_call", {
@@ -69,74 +90,89 @@ def _record_api_call(result, call_type: str, chat_id_str: str = ""):
         })
 
 
+# ── Initialisation ────────────────────────────────────────────────────────────
+
 def initialize_ai(state):
     """
-    Initialize Gemini with the pinned primary model, falling back to the
-    latest-alias if the pinned version is unavailable.
-    Stores the active model name in state.active_model_name.
+    Create a google-genai Client and set the active model name.
+    Validates connectivity by calling client.models.get() for each
+    candidate model name; falls back to the latest-alias if the pinned
+    version is unavailable.
     """
     try:
-        genai.configure(api_key=GEMINI_API_KEY)
+        ai_client = genai.Client(api_key=GEMINI_API_KEY)
     except Exception as e:
-        logging.error(f"[AI] Failed to configure Gemini API key: {e}")
-        state.model = None
+        logging.error(f"[AI] Failed to create Gemini client: {e}")
+        state.ai_client = None
+        state.active_model_name = None
         return
 
     for model_name in [GEMINI_PRIMARY_MODEL, GEMINI_FALLBACK_MODEL]:
         try:
-            state.model = genai.GenerativeModel(
-                model_name,
-                system_instruction=CONVERSATION_SYSTEM_PROMPT,
-            )
+            # Lightweight sync call to verify the model is accessible
+            ai_client.models.get(model=model_name)
+            state.ai_client = ai_client
             state.active_model_name = model_name
-            logging.info(f"[AI] Gemini model initialized: {model_name}")
+            logging.info(f"[AI] Gemini model validated and ready: {model_name}")
             if model_name == GEMINI_FALLBACK_MODEL:
                 logging.warning(
                     f"[AI] Using fallback model '{model_name}' — primary model "
-                    f"'{GEMINI_PRIMARY_MODEL}' unavailable. Update GEMINI_PRIMARY_MODEL "
-                    "in settings.py when a new version is available."
+                    f"'{GEMINI_PRIMARY_MODEL}' unavailable. "
+                    "Update GEMINI_PRIMARY_MODEL in settings.py."
                 )
             return
+        except genai_errors.ClientError as e:
+            logging.warning(
+                f"[AI] Model '{model_name}' not accessible (HTTP {e.code}). "
+                "Trying next candidate..."
+            )
         except Exception as e:
             logging.warning(
-                f"[AI] Could not initialize model '{model_name}': {e}. "
+                f"[AI] Could not validate model '{model_name}': {e}. "
                 "Trying next candidate..."
             )
 
+    # Both candidates failed validation — set client anyway so the error
+    # is surfaced clearly on the first API call rather than with a None-guard.
+    state.ai_client = ai_client
+    state.active_model_name = GEMINI_PRIMARY_MODEL
     logging.error(
-        "[AI] All Gemini model candidates failed to initialize. "
-        "Check GEMINI_API_KEY and model availability."
+        "[AI] Could not validate any Gemini model. "
+        "Check GEMINI_API_KEY and model availability. "
+        "The bot will attempt to run but API calls may fail."
     )
-    state.model = None
-    state.active_model_name = None
 
+
+# ── Response cleanup ──────────────────────────────────────────────────────────
 
 def cleanup_ai_response(text: str) -> str:
-    """Clean AI output from unwanted punctuation and whitespace."""
-    cleaned_text = text.replace("–", " ").replace("—", " ")
-    cleaned_text = cleaned_text.strip().rstrip(".?!")
-    cleaned_text = re.sub(r"\s+", " ", cleaned_text)
-    cleaned_text = cleaned_text.replace(" ,", ",")
-    return cleaned_text.strip()
+    """Normalise AI output: strip dashes, trailing punctuation, extra whitespace."""
+    cleaned = text.replace("–", " ").replace("—", " ")
+    cleaned = cleaned.strip().rstrip(".?!")
+    cleaned = re.sub(r"\s+", " ", cleaned)
+    cleaned = cleaned.replace(" ,", ",")
+    return cleaned.strip()
 
 
-async def with_api_retry(api_call, timeout_sec: float = 30.0):
+# ── Retry wrapper ─────────────────────────────────────────────────────────────
+
+async def with_api_retry(api_call_fn, timeout_sec: float = 30.0):
     """
-    Execute a synchronous Gemini API call with:
-    - asyncio.to_thread (non-blocking)
-    - 30s timeout per attempt
-    - Up to 3 retries for transient errors:
-        ResourceExhausted (429), ServiceUnavailable (503),
-        DeadlineExceeded (504), InternalServerError (500), TimeoutError
-    - Single attempt then None for permanent errors:
-        NotFound (model deprecated), PermissionDenied (bad key)
+    Execute an async Gemini API call with timeout and retry.
+
+    api_call_fn must be a zero-argument callable that returns a coroutine,
+    e.g.  lambda: client.aio.models.generate_content(...)
+
+    Retry policy:
+    - asyncio.TimeoutError          → retry up to 3 times (10s gap)
+    - ClientError HTTP 429          → retry up to 3 times (60s gap)
+    - ServerError (5xx)             → retry up to 3 times (15s gap)
+    - ClientError 404 / 403         → no retry, return None immediately
+    - Other ClientError             → no retry, return None immediately
     """
     for attempt in range(1, 4):
         try:
-            return await asyncio.wait_for(
-                asyncio.to_thread(api_call),
-                timeout=timeout_sec,
-            )
+            return await asyncio.wait_for(api_call_fn(), timeout=timeout_sec)
 
         except asyncio.TimeoutError:
             logging.warning(
@@ -145,79 +181,89 @@ async def with_api_retry(api_call, timeout_sec: float = 30.0):
             )
             await asyncio.sleep(10)
 
-        except google_exceptions.ResourceExhausted as e:
-            retry_delay = 60
-            if hasattr(e, "error") and hasattr(e.error, "metadata"):
-                for meta in e.error.metadata:
-                    if meta[0] == "retry-delay":
-                        retry_delay = int(meta[1].seconds) + 1
-                        break
-            logging.warning(
-                f"[AI] Rate limit hit. Retrying in {retry_delay}s "
-                f"(attempt {attempt}/3)..."
-            )
-            await asyncio.sleep(retry_delay)
+        except genai_errors.ClientError as e:
+            if e.code == 429:
+                logging.warning(
+                    f"[AI] Rate limit (429). Retrying in 60s "
+                    f"(attempt {attempt}/3)..."
+                )
+                await asyncio.sleep(60)
+            elif e.code == 404:
+                logging.error(
+                    f"[AI] Model not found (404): {e.message}. "
+                    "Update GEMINI_PRIMARY_MODEL in settings.py."
+                )
+                record_event("api_error", {
+                    "reason": "model_not_found",
+                    "error": str(e.message)[:100],
+                })
+                return None
+            elif e.code == 403:
+                logging.error(
+                    f"[AI] Permission denied (403): {e.message}. "
+                    "Check that GEMINI_API_KEY is valid and not revoked."
+                )
+                record_event("api_error", {
+                    "reason": "permission_denied",
+                    "error": str(e.message)[:100],
+                })
+                return None
+            else:
+                logging.error(
+                    f"[AI] Client error (HTTP {e.code}): {e.message}. "
+                    "Not retrying."
+                )
+                record_event("api_error", {
+                    "reason": f"client_error_{e.code}",
+                    "error": str(e.message)[:100],
+                })
+                return None
 
-        except (
-            google_exceptions.ServiceUnavailable,
-            google_exceptions.DeadlineExceeded,
-            google_exceptions.InternalServerError,
-        ) as e:
+        except genai_errors.ServerError as e:
             logging.warning(
-                f"[AI] Retryable server error: {type(e).__name__} "
-                f"(attempt {attempt}/3). Retrying in 15s..."
+                f"[AI] Server error (HTTP {e.code}) (attempt {attempt}/3). "
+                "Retrying in 15s..."
             )
             await asyncio.sleep(15)
-
-        except google_exceptions.NotFound as e:
-            logging.error(
-                f"[AI] Model not found: {e}. "
-                "The model version may be deprecated. "
-                "Update GEMINI_PRIMARY_MODEL in settings.py."
-            )
-            record_event("api_error", {"reason": "model_not_found", "error": str(e)[:100]})
-            return None
-
-        except google_exceptions.PermissionDenied as e:
-            logging.error(
-                f"[AI] Permission denied: {e}. "
-                "Check that GEMINI_API_KEY is valid and not revoked."
-            )
-            record_event("api_error", {"reason": "permission_denied", "error": str(e)[:100]})
-            return None
 
     logging.error("[AI] Failed to execute API request after 3 attempts.")
     record_event("api_error", {"reason": "all_retries_exhausted"})
     return None
 
 
+# ── Generation functions ──────────────────────────────────────────────────────
+
 async def generate_first_message(anket_text: str, state) -> str:
-    """Generate the first message for a new profile."""
+    """Generate the opening message for a new profile."""
     fallback_message = "your profile seemed very interesting, shall we chat?"
-    if not state.model:
+    if not state.ai_client:
         return fallback_message
 
     match = ANKET_PATTERN.match(anket_text)
     profile_text = match.group(4).strip() if match and match.group(4) else ""
-
     if len(profile_text) < 15:
         profile_text = "Profile description is short or meaningless"
 
     prompt = FIRST_MESSAGE_PROMPT.format(profile_text=profile_text)
-    result = await with_api_retry(lambda: state.model.generate_content(prompt))
+    result = await with_api_retry(
+        lambda: state.ai_client.aio.models.generate_content(
+            model=state.active_model_name,
+            contents=prompt,
+        )
+    )
     _record_api_call(result, "first_message")
 
-    if result and hasattr(result, "text"):
-        return cleanup_ai_response(getattr(result, "text"))
+    if result and hasattr(result, "text") and result.text:
+        return cleanup_ai_response(result.text)
     return fallback_message
 
 
 async def classify_profile_quality(description: str, state) -> bool:
     """
-    Returns True if the profile description is worth messaging.
-    Falls back to character-count logic if AI is unavailable.
+    Return True if the profile description is worth sending an opener to.
+    Falls back to character-count heuristic if the AI client is unavailable.
     """
-    if not state.model:
+    if not state.ai_client:
         return len(description.strip()) > 10
 
     prompt = (
@@ -227,11 +273,16 @@ async def classify_profile_quality(description: str, state) -> bool:
         "Ignore: blank, bot-like, purely transactional, or copy-paste profiles.\n"
         "Answer with only YES or NO."
     )
-    result = await with_api_retry(lambda: state.model.generate_content(prompt))
+    result = await with_api_retry(
+        lambda: state.ai_client.aio.models.generate_content(
+            model=state.active_model_name,
+            contents=prompt,
+        )
+    )
     _record_api_call(result, "profile_classify")
-    if result and hasattr(result, "text"):
-        answer = result.text.strip().upper()
-        decision = answer.startswith("YES")
+
+    if result and hasattr(result, "text") and result.text:
+        decision = result.text.strip().upper().startswith("YES")
         logging.info(
             f"[AI] Profile classification ({len(description)} chars) → "
             f"{'LIKE' if decision else 'DISLIKE'}"
@@ -242,9 +293,10 @@ async def classify_profile_quality(description: str, state) -> bool:
 
 
 async def _update_memory(chat_id_str: str, recent_turns: list, state):
-    """Extract and store key facts from recent turns into persistent memory."""
-    if not state.model:
+    """Extract and persist key facts from recent conversation turns."""
+    if not state.ai_client:
         return
+
     existing = state.conversation_memories.get(chat_id_str, "")
     turns_text = "\n".join(
         f"{t['role'].upper()}: {t['parts'][0]}" for t in recent_turns
@@ -257,9 +309,15 @@ async def _update_memory(chat_id_str: str, recent_turns: list, state):
         "Be extremely concise — maximum 2 sentences. Facts only, no analysis. "
         "If nothing new is mentioned, return the existing notes unchanged."
     )
-    result = await with_api_retry(lambda: state.model.generate_content(prompt))
+    result = await with_api_retry(
+        lambda: state.ai_client.aio.models.generate_content(
+            model=state.active_model_name,
+            contents=prompt,
+        )
+    )
     _record_api_call(result, "memory_update", chat_id_str)
-    if result and hasattr(result, "text"):
+
+    if result and hasattr(result, "text") and result.text:
         updated = result.text.strip()
         if updated:
             state.conversation_memories[chat_id_str] = updated
@@ -270,9 +328,9 @@ async def _update_memory(chat_id_str: str, recent_turns: list, state):
 
 
 async def generate_conversation_response(chat_id: int, user_message: str, state) -> str:
-    """Generate a contextual reply in an existing dialog."""
+    """Generate a contextual reply in an existing conversation."""
     fallback_message = "hm, something went wrong, repeat that"
-    if not state.model:
+    if not state.ai_client:
         return fallback_message
 
     # Sanitize before any history manipulation
@@ -302,11 +360,10 @@ async def generate_conversation_response(chat_id: int, user_message: str, state)
     user_turn = {"role": "user", "parts": [user_message], "timestamp": now_iso}
     state.conversation_histories[chat_id_str].append(user_turn)
 
-    # Trim by estimated token budget first, keeping at least 4 turns for coherence.
+    # Trim by estimated token budget; keep at least 4 turns for coherence
     history = state.conversation_histories[chat_id_str]
     while len(history) > 4 and _estimate_history_tokens(history) > MAX_CONTEXT_TOKENS:
         history.pop(0)
-    # Hard fallback: also cap by turn count to bound API payload size.
     if len(history) > MAX_HISTORY_LENGTH:
         state.conversation_histories[chat_id_str] = history[-MAX_HISTORY_LENGTH:]
 
@@ -316,7 +373,7 @@ async def generate_conversation_response(chat_id: int, user_message: str, state)
             for msg in state.conversation_histories[chat_id_str]
         ]
 
-        # Inject persistent memory into first turn (API copy only, not stored history)
+        # Inject persistent memory into first turn (API copy only — not stored history)
         memory = state.conversation_memories.get(chat_id_str, "")
         if memory and history_for_api:
             history_for_api = list(history_for_api)
@@ -327,17 +384,24 @@ async def generate_conversation_response(chat_id: int, user_message: str, state)
                 ]
                 history_for_api[0] = first_turn
 
-        history_to_send = history_for_api[:-1] if history_for_api else []
-        chat_session = state.model.start_chat(history=history_to_send)
-        last_parts = history_for_api[-1].get("parts", []) if history_for_api else [user_message]
+        # Convert to SDK Content objects and call generate_content with full history.
+        # system_instruction is applied via GenerateContentConfig on every call.
+        sdk_contents = _to_sdk_contents(history_for_api)
+        config = types.GenerateContentConfig(
+            system_instruction=CONVERSATION_SYSTEM_PROMPT,
+        )
 
         result = await with_api_retry(
-            lambda: chat_session.send_message(last_parts)
+            lambda: state.ai_client.aio.models.generate_content(
+                model=state.active_model_name,
+                contents=sdk_contents,
+                config=config,
+            )
         )
         _record_api_call(result, "conversation", chat_id_str)
 
-        if result and hasattr(result, "text"):
-            ai_response = cleanup_ai_response(getattr(result, "text"))
+        if result and hasattr(result, "text") and result.text:
+            ai_response = cleanup_ai_response(result.text)
 
             validation = validate_response(ai_response)
             if not validation.valid:
@@ -361,7 +425,7 @@ async def generate_conversation_response(chat_id: int, user_message: str, state)
             if len(turns) % 4 == 0 and len(turns) >= 4:
                 asyncio.create_task(_update_memory(chat_id_str, turns[-4:], state))
 
-            # Warn if context is getting large
+            # Warn if context is growing large
             estimated = _estimate_history_tokens(turns)
             if estimated > MAX_CONTEXT_TOKENS * 0.8:
                 logging.warning(

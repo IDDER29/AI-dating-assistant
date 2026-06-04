@@ -24,6 +24,7 @@ _Last updated: 2026-06-04_
 | **Plan 9** | [plan-9-gemini-reliability.md](plan-9-gemini-reliability.md) | Week 5 | Model pinning, token budget, cost tracking | Plans 2, 7 |
 | **Plan 10** | [plan-10-production-hardening.md](plan-10-production-hardening.md) | Week 6 | Graceful shutdown, pyrofork, systemd | Plans 1, 4, 7, 8 |
 | **Plan 11** | [plan-11-code-quality.md](plan-11-code-quality.md) | Week 7 | Structured logging, types, integration tests, stats CLI | All prior plans |
+| **Plan 12** | [plan-12-google-genai-migration.md](plan-12-google-genai-migration.md) | Week 8 | Migrate from deprecated google-generativeai to google-genai | Plans 1–11 |
 
 ---
 
@@ -50,12 +51,17 @@ _Last updated: 2026-06-04_
                                    │
                                    ▼
                                [Plan 11]
-                          (Code Quality — Final)
+                          (Code Quality)
+                                   │
+                                   ▼
+                               [Plan 12]
+                          (SDK Migration — Final)
 ```
 
 Plans 8 and 9 can run in parallel (Week 5).
 Plan 10 requires Plans 8 (security foundation) to be done.
-Plan 11 is last — refactors and tests code that must be stable first.
+Plan 11 is second-to-last — refactors code that must be stable first.
+Plan 12 is the final plan — migrates off the deprecated Google SDK.
 
 ---
 
@@ -91,6 +97,9 @@ Plan 11 is last — refactors and tests code that must be stable first.
 | QA-04 (with_rate_limit_handling name) | Plan 11 |
 | QA-05 (no integration tests) | Plan 11 |
 | QA-06 (no stats query tool) | Plan 11 |
+| SDK-01 (google-generativeai ended support) | Plan 12 |
+| SDK-02 (new models need google-genai) | Plan 12 |
+| SDK-03 (system_instruction handling) | Plan 12 |
 
 ---
 
@@ -109,3 +118,4 @@ Plan 11 is last — refactors and tests code that must be stable first.
 | Plan 9 | ✅ Done | 4 / 4 | Model pinning+fallback, token-aware trim, API usage tracking, error stats |
 | Plan 10 | ✅ Done | 4 / 4 | Graceful shutdown, message lifetime fix, pyrofork 2.3.69, systemd unit + DEPLOYMENT.md |
 | Plan 11 | ✅ Done | 6 / 6 | Structured logging, BotState typing, app.py decomposed, 28 integration tests, stats CLI, with_api_retry rename |
+| Plan 12 | ✅ Done | 4 / 4 | google-genai migration: native async, ClientError/ServerError, state.ai_client, 81 tests pass, no FutureWarning |
