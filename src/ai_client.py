@@ -13,6 +13,7 @@ from settings import (
     FIRST_MESSAGE_PROMPT,
     MAX_HISTORY_LENGTH,
 )
+from input_sanitizer import sanitize_user_input
 from output_validator import validate_response
 from storage import save_memories
 
@@ -127,7 +128,7 @@ async def classify_profile_quality(description: str, state) -> bool:
         answer = result.text.strip().upper()
         decision = answer.startswith("YES")
         logging.info(
-            f"[AI] Profile classification: '{description[:50]}' → "
+            f"[AI] Profile classification ({len(description)} chars) → "
             f"{'LIKE' if decision else 'DISLIKE'}"
         )
         return decision
@@ -158,7 +159,7 @@ async def _update_memory(chat_id_str: str, recent_turns: list, state):
             state.conversation_memories[chat_id_str] = updated
             asyncio.create_task(asyncio.to_thread(save_memories, state))
             logging.info(
-                f"[AI] Memory updated for user {chat_id_str}: {updated[:80]}"
+                f"[AI] Memory updated for user {chat_id_str} ({len(updated)} chars)."
             )
 
 
@@ -166,6 +167,11 @@ async def generate_conversation_response(chat_id: int, user_message: str, state)
     """Generate a contextual reply in an existing dialog."""
     fallback_message = "hm, something went wrong, repeat that"
     if not state.model:
+        return fallback_message
+
+    # Sanitize before any history manipulation
+    user_message = sanitize_user_input(user_message)
+    if not user_message:
         return fallback_message
 
     chat_id_str = str(chat_id)

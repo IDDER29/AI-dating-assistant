@@ -3,6 +3,7 @@ import datetime
 import logging
 
 from ai_client import classify_profile_quality, generate_first_message
+from logging_setup import redact
 from settings import (
     ACTION_COOLDOWN_SECONDS,
     ANKET_PATTERN,
@@ -65,8 +66,10 @@ async def process_leomatch_task(client, message, state, adapter):
 async def process_leomatch_message(client, text: str, state, adapter=None, is_startup: bool = False):
     """Execute direct actions in the dating bot."""
     text_str = str(text) if text else ""
-    truncated_text = text_str[:120] if len(text_str) > 120 else text_str
-    logging.info(f"[LEOMATCH-EXECUTOR] Analyzing text: \"{truncated_text}\"")
+    logging.info(
+        f"[LEOMATCH-EXECUTOR] Analyzing message ({len(text_str)} chars): "
+        f"\"{redact(text_str, 20)}\""
+    )
 
     if any(phrase in text for phrase in KNOWN_SYSTEM_MESSAGES):
         logging.info(
@@ -90,7 +93,8 @@ async def process_leomatch_message(client, text: str, state, adapter=None, is_st
             description=description,
         )
         logging.info(
-            f"[LEOMATCH-EXECUTOR] Profile '{match.group(1).strip()}' saved to memory."
+            f"[LEOMATCH-EXECUTOR] Profile saved to memory "
+            f"(description length: {len(description)} chars)."
         )
 
         if description:
@@ -156,4 +160,7 @@ async def process_leomatch_message(client, text: str, state, adapter=None, is_st
         return
 
     if not is_startup:
-        logging.warning(f"[LEOMATCH-EXECUTOR] Unrecognized text: '{text}'")
+        logging.warning(
+            f"[LEOMATCH-EXECUTOR] Unrecognized text ({len(text_str)} chars): "
+            f"'{redact(text_str, 30)}'"
+        )

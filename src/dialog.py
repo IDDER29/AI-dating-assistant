@@ -4,12 +4,14 @@ import logging
 import random
 
 from ai_client import generate_conversation_response
+from input_sanitizer import sanitize_user_input
 from settings import (
     GRACE_PERIOD_SECONDS,
     MIN_REPLY_INTERVAL_SEC,
     TYPING_SPEED_CPS,
     compute_reply_delay,
 )
+from logging_setup import redact
 from meeting_detector import detect_meeting_signal
 from operator_notify import operator_notify
 from stats import record_event
@@ -81,6 +83,14 @@ async def process_dialogue_task(client, message, state, adapter):
                     f"[DIALOG] No message content for {user_name}. Cancelling."
                 )
                 return
+
+        # Sanitize combined input at the dispatch boundary
+        user_message = sanitize_user_input(user_message)
+        if not user_message:
+            logging.warning(
+                f"[DIALOG] Message for {user_name} was empty after sanitization."
+            )
+            return
 
         # Meeting signal detection
         if detect_meeting_signal(user_message):
@@ -165,7 +175,8 @@ async def process_dialogue_task(client, message, state, adapter):
                 typing_delay = (len(part) / TYPING_SPEED_CPS) + random.uniform(0.5, 2.0)
                 await adapter.show_typing(chat_id)
                 logging.info(
-                    f"[DIALOG] Simulating typing {typing_delay:.1f}s for part: '{part}'"
+                    f"[DIALOG] Simulating typing {typing_delay:.1f}s "
+                    f"(part length: {len(part)} chars)"
                 )
                 await asyncio.sleep(typing_delay)
                 sent = await adapter.send_reply(chat_id, part)
@@ -178,7 +189,8 @@ async def process_dialogue_task(client, message, state, adapter):
             typing_delay = (len(ai_response) / TYPING_SPEED_CPS) + random.uniform(0.5, 2.0)
             await adapter.show_typing(chat_id)
             logging.info(
-                f"[DIALOG] Simulating typing {typing_delay:.1f}s for message: '{ai_response}'"
+                f"[DIALOG] Simulating typing {typing_delay:.1f}s "
+                f"(message length: {len(ai_response)} chars)"
             )
             await asyncio.sleep(typing_delay)
             sent = await adapter.send_reply(chat_id, ai_response)

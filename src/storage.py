@@ -108,6 +108,51 @@ def save_memories(state):
     save_json_data(MEMORY_PATH, state.conversation_memories)
 
 
+def delete_user_data(state, chat_id: int) -> dict:
+    """
+    Delete all stored data for a specific user ID.
+    Removes from: conversation_histories, conversation_memories.
+    Also clears in-memory rate-limit and meeting-signal state.
+    Returns a summary dict of what was deleted.
+    """
+    chat_id_str = str(chat_id)
+    deleted = {}
+
+    if chat_id_str in state.conversation_histories:
+        turn_count = len(state.conversation_histories.pop(chat_id_str))
+        deleted["conversation_turns"] = turn_count
+        save_json_data(HISTORY_PATH, state.conversation_histories)
+        logging.info(
+            f"[STORAGE] Deleted {turn_count} conversation turns for user {chat_id}."
+        )
+
+    if chat_id_str in state.conversation_memories:
+        state.conversation_memories.pop(chat_id_str)
+        deleted["memory"] = True
+        save_json_data(MEMORY_PATH, state.conversation_memories)
+        logging.info(f"[STORAGE] Deleted conversation memory for user {chat_id}.")
+
+    # Clear in-memory-only fields (no persistence needed)
+    if chat_id in state.last_reply_times:
+        state.last_reply_times.pop(chat_id)
+    state.meeting_signals_detected.discard(chat_id)
+
+    if not deleted:
+        logging.info(f"[STORAGE] No data found for user {chat_id}. Nothing deleted.")
+
+    return deleted
+
+
+def whitelist_user(state, chat_id: int):
+    """
+    Add a user to the in-memory whitelist and persist to whitelist.json.
+    Call this after taking over a conversation manually.
+    """
+    state.whitelist_ids.add(chat_id)
+    save_json_data(WHITELIST_PATH, list(state.whitelist_ids))
+    logging.info(f"[STORAGE] User {chat_id} added to whitelist and saved.")
+
+
 def load_whitelist(state):
     whitelist_list = load_json_data(WHITELIST_PATH, [])
     state.whitelist_ids = set(whitelist_list)
