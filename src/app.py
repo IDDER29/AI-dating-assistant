@@ -6,11 +6,11 @@ from pyrogram import Client, filters
 from pyrogram.handlers import MessageHandler, EditedMessageHandler
 
 from ai_client import initialize_ai
-from config import BOT_USERNAME, SESSION_NAME, TELEGRAM_API_HASH, TELEGRAM_API_ID
-from dialog import private_handler
+from config import BOT_USERNAME, SESSION_NAME, API_HASH, API_ID, GEMINI_API_KEY
+from dialog import private_chat_handler
 from leomatch import leomatch_handler, process_leomatch_message
 from logging_setup import setup_logging
-from state import get_state
+from state import BotState
 from storage import load_histories, load_whitelist
 from utils import get_message_text
 
