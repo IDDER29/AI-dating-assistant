@@ -20,7 +20,7 @@ _Week: 2 | Prerequisite: Plan 1 | Can run parallel to Plans 3 + 4_
 
 ## Task 6.1 — Operator Notification Channel
 
-**Status:** ⬜ Not started
+**Status:** ✅ Done
 **File:** `src/operator_notify.py` (new)
 **Estimated effort:** 20 minutes
 **Depends on:** Nothing (independent)
@@ -90,7 +90,7 @@ if ai_response in ("hm, something went wrong, repeat that",):
 
 ## Task 6.2 — System Heartbeat
 
-**Status:** ⬜ Not started
+**Status:** ✅ Done
 **File:** `src/app.py`
 **Estimated effort:** 30 minutes
 **Depends on:** Task 6.1
@@ -163,7 +163,7 @@ await operator_notify(
 
 ## Task 6.3 — Critical Event Notifications
 
-**Status:** ⬜ Not started
+**Status:** ✅ Done
 **Files:** `src/storage.py`, `src/ai_client.py`, `src/dialog.py`
 **Estimated effort:** 45 minutes
 **Depends on:** Task 6.1
@@ -239,11 +239,11 @@ if not result:
 ## Completion Checklist
 
 ```
-[ ] Task 6.1 — Notification channel: message arrives in Saved Messages
-[ ] Task 6.2 — Heartbeat: startup and periodic notifications verified
-[ ] Task 6.3 — Critical events: at least API failure and FloodWait failure notify operator
-[ ] SIGHUP whitelist reload (Plan 4 Task 4.3 — ensure it's done)
-[ ] Manual test: add user to whitelist via SIGHUP, verify no restart needed
+[x] Task 6.1 — operator_notify.py created; wired in dialog.py for API failure
+[x] Task 6.2 — _heartbeat() in app.py; HEARTBEAT_INTERVAL_HOURS=6 in config.py; startup notification sent
+[x] Task 6.3 — FloodWait delivery failure notifies operator; API fallback notifies operator
+[x] SIGHUP whitelist reload (Plan 4 Task 4.3 — done)
+[ ] Manual verification tests
 [ ] Update plan status in plans/README.md
 ```
 

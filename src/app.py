@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 import logging
 from functools import partial
 
@@ -6,10 +7,19 @@ from pyrogram import Client, filters
 from pyrogram.handlers import MessageHandler, EditedMessageHandler
 
 from ai_client import initialize_ai
-from config import BOT_USERNAME, SESSION_NAME, API_HASH, API_ID, GEMINI_API_KEY, MAX_CONVERSATION_AGE_DAYS
+from config import (
+    BOT_USERNAME,
+    GEMINI_API_KEY,
+    HEARTBEAT_INTERVAL_HOURS,
+    MAX_CONVERSATION_AGE_DAYS,
+    SESSION_NAME,
+    API_HASH,
+    API_ID,
+)
 from dialog import private_chat_handler
 from leomatch import leomatch_handler, process_leomatch_message
 from logging_setup import setup_logging
+from operator_notify import operator_notify
 from state import BotState
 from storage import load_histories, load_memories, load_whitelist, prune_stale_histories, save_histories
 from utils import get_message_text
@@ -31,6 +41,27 @@ def initialize_app(state):
         raise SystemExit(1)
     state.app = Client(SESSION_NAME, api_id=API_ID, api_hash=API_HASH)
     return state.app
+
+
+async def _heartbeat(app_client, state):
+    """Send a periodic status message to operator's Saved Messages."""
+    while True:
+        await asyncio.sleep(HEARTBEAT_INTERVAL_HOURS * 3600)
+        active_count = len(state.active_dialogue_tasks)
+        uptime = datetime.datetime.now(datetime.timezone.utc) - state.start_time
+        uptime_hours = int(uptime.total_seconds() // 3600)
+        uptime_mins = int((uptime.total_seconds() % 3600) // 60)
+        history_count = len(state.conversation_histories)
+        meeting_count = len(getattr(state, "meeting_signals_detected", set()))
+
+        await operator_notify(
+            app_client,
+            f"✅ Bot alive\n"
+            f"Uptime: {uptime_hours}h {uptime_mins}m\n"
+            f"Active conversations: {active_count}\n"
+            f"Total conversations: {history_count}\n"
+            f"Meetings detected (session): {meeting_count}"
+        )
 
 
 async def run():
@@ -90,6 +121,14 @@ async def run():
         )
         logging.info("[SYSTEM] Handler for private dialogues registered.")
 
+        # Startup notification
+        await operator_notify(
+            state.app,
+            f"🚀 Bot started\n"
+            f"Conversations loaded: {len(state.conversation_histories)}\n"
+            f"Whitelist entries: {len(state.whitelist_ids)}"
+        )
+
         logging.info(f"[SYSTEM] Analyzing last message from @{BOT_USERNAME}...")
         history = [
             msg async for msg in state.app.get_chat_history(bot_peer.user_id, limit=1)
@@ -101,5 +140,9 @@ async def run():
             logging.info(f"[{BOT_USERNAME.upper()}] Chat is empty. Sending start command.")
             await state.app.send_message(BOT_USERNAME, "1")
 
-        logging.info("[SYSTEM] Startup complete. Bot is running in two modes.")
+        asyncio.create_task(_heartbeat(state.app, state))
+        logging.info(
+            f"[SYSTEM] Startup complete. Bot is running. "
+            f"Heartbeat every {HEARTBEAT_INTERVAL_HOURS}h."
+        )
         await asyncio.Event().wait()

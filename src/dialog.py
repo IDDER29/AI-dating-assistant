@@ -12,6 +12,9 @@ from config import (
     TYPING_SPEED_CPS,
     compute_reply_delay,
 )
+from meeting_detector import detect_meeting_signal
+from operator_notify import operator_notify
+from stats import record_event
 from storage import save_histories
 from utils import get_message_text, safe_send_message
 
@@ -81,6 +84,22 @@ async def process_dialogue_task(client, message, state):
                 )
                 return
 
+        # Meeting signal detection
+        if detect_meeting_signal(user_message):
+            logging.info(
+                f"[MEETING] 🎯 Meeting signal detected from {user_name} (ID: {chat_id})!"
+            )
+            state.meeting_signals_detected.add(chat_id)
+            record_event("meeting_signal", {"chat_id": chat_id, "user_name": user_name})
+            await operator_notify(
+                client,
+                f"🎯 MEETING SUGGESTED\n\n"
+                f"User: {user_name} (ID: {chat_id})\n"
+                f"Message: \"{user_message[:300]}\"\n\n"
+                f"➡️ Add ID {chat_id} to whitelist.json, then:\n"
+                f"   kill -HUP <pid>   (to take over without restart)"
+            )
+
         # Compute natural reply delay based on gap since last message
         chat_id_str = str(chat_id)
         gap_seconds = 0.0
@@ -121,12 +140,20 @@ async def process_dialogue_task(client, message, state):
 
         logging.info(f"[DIALOG] Time is up. Generating reply for {user_name}...")
 
+        # Track new conversations
+        if not state.conversation_histories.get(chat_id_str):
+            record_event("conversation_started", {"chat_id": chat_id})
+
         ai_response = await generate_conversation_response(chat_id, user_message, state)
         asyncio.create_task(_persist_histories(state))
 
         if not ai_response or not ai_response.strip():
             logging.warning(
                 f"[DIALOG] Received empty AI response for {user_name}. Skipping send."
+            )
+            await operator_notify(
+                client,
+                f"⚠️ API failure for {user_name} (ID: {chat_id}). Fallback message sent."
             )
             return
 
@@ -145,7 +172,13 @@ async def process_dialogue_task(client, message, state):
                     f"[DIALOG] Simulating typing {typing_delay:.1f}s for part: '{part}'"
                 )
                 await asyncio.sleep(typing_delay)
-                await safe_send_message(client, chat_id, part)
+                sent = await safe_send_message(client, chat_id, part)
+                if not sent:
+                    await operator_notify(
+                        client,
+                        f"⚠️ Failed to deliver message to {user_name} (ID: {chat_id}) "
+                        "after 3 FloodWait retries."
+                    )
         else:
             typing_delay = (len(ai_response) / TYPING_SPEED_CPS) + random.uniform(0.5, 2.0)
             await client.send_chat_action(chat_id, enums.ChatAction.TYPING)
@@ -153,9 +186,16 @@ async def process_dialogue_task(client, message, state):
                 f"[DIALOG] Simulating typing {typing_delay:.1f}s for message: '{ai_response}'"
             )
             await asyncio.sleep(typing_delay)
-            await safe_send_message(client, chat_id, ai_response)
+            sent = await safe_send_message(client, chat_id, ai_response)
+            if not sent:
+                await operator_notify(
+                    client,
+                    f"⚠️ Failed to deliver message to {user_name} (ID: {chat_id}) "
+                    "after 3 FloodWait retries."
+                )
 
         state.last_reply_times[chat_id] = datetime.datetime.now(datetime.timezone.utc)
+        record_event("reply_sent", {"chat_id": chat_id, "ladder": "|||" in ai_response})
         logging.info(f"[DIALOG] Full reply for {user_name} sent.")
     except asyncio.CancelledError:
         logging.info(f"[DISPATCHER] Task for chat with {user_name} cancelled.")

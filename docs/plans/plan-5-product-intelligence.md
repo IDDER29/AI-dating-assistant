@@ -20,7 +20,7 @@ _Week: 3 | Prerequisite: Plans 2 + 3 + 6 complete | Must complete before: Plan 7
 
 ## Task 5.1 — Meeting Signal Detection
 
-**Status:** ⬜ Not started
+**Status:** ✅ Done
 **Files:** `src/meeting_detector.py` (new), `src/dialog.py`
 **Estimated effort:** 1.5 hours
 **Depends on:** Plan 6 Task 6.1 (operator notification channel must exist)
@@ -116,7 +116,7 @@ if detect_meeting_signal(user_message):
 
 ## Task 5.2 — Goal Tracking State
 
-**Status:** ⬜ Not started
+**Status:** ✅ Done
 **Files:** `src/state.py`, `src/dialog.py`
 **Estimated effort:** 30 minutes
 **Depends on:** Task 5.1
@@ -164,7 +164,7 @@ logging.info(f"[SYSTEM] Goal tracking initialized. 0 meeting signals in current 
 
 ## Task 5.3 — Minimal Stats Recording
 
-**Status:** ⬜ Not started
+**Status:** ✅ Done
 **Files:** `src/stats.py` (new), `src/leomatch.py`, `src/dialog.py`, `src/ai_client.py`
 **Estimated effort:** 1 hour
 **Depends on:** Plan 1 Task 1.1 (atomic write should inform stats write pattern)
@@ -262,10 +262,10 @@ record_event("meeting_signal", {"chat_id": chat_id, "user_name": user_name})
 ## Completion Checklist
 
 ```
-[ ] Task 5.1 — Meeting signal detection: Russian + English signals tested, notification received
-[ ] Task 5.2 — Goal tracking state: meeting count appears in heartbeat
-[ ] Task 5.3 — Stats recording: all event types verified in stats.json
-[ ] End-to-end test: profile → opener → conversation → meeting signal → operator notified
+[x] Task 5.1 — meeting_detector.py created; detect_meeting_signal() wired in dialog.py; operator notified on detection
+[x] Task 5.2 — meeting_signals_detected set in state.py; populated in dialog.py; reported in heartbeat via getattr
+[x] Task 5.3 — stats.py created; events: profile_liked, profile_disliked, opener_sent (leomatch.py), conversation_started, meeting_signal, reply_sent (dialog.py)
+[ ] End-to-end verification tests
 [ ] Update plan status in plans/README.md
 ```
 

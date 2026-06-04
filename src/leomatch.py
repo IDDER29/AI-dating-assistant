@@ -9,6 +9,7 @@ from config import (
     BOT_USERNAME,
     KNOWN_SYSTEM_MESSAGES,
 )
+from stats import record_event
 from utils import get_message_text, safe_send_message
 
 
@@ -97,10 +98,14 @@ async def process_leomatch_message(client, text: str, state, is_startup: bool = 
 
         if should_like:
             logging.info("[LEOMATCH-EXECUTOR] Profile approved. Liking...")
+            record_event("profile_liked", {"has_description": bool(description)})
             await asyncio.sleep(3)
             await safe_send_message(client, BOT_USERNAME, "💌 / 📹")
         else:
             logging.info("[LEOMATCH-EXECUTOR] Profile rejected. Disliking...")
+            record_event("profile_disliked", {
+                "reason": "no_description" if not description else "ai_rejected"
+            })
             await asyncio.sleep(3)
             await safe_send_message(client, BOT_USERNAME, "👎")
 
@@ -134,6 +139,7 @@ async def process_leomatch_message(client, text: str, state, is_startup: bool = 
                 })
                 state.sent_openers = state.sent_openers[-5:]
                 state.last_seen_anket_text = None
+                record_event("opener_sent", {"length": len(intro_message)})
                 logging.info("[LEOMATCH-EXECUTOR] Opener sent and stored. Memory cleared.")
             except Exception as e:
                 logging.error(f"[LEOMATCH-EXECUTOR] Failed to send opener: {e}")
