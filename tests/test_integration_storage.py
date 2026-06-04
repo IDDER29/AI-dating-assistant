@@ -2,6 +2,8 @@
 Integration tests for the storage layer.
 Uses real temporary files — verifies atomicity, corruption handling, and pruning.
 """
+import datetime
+import importlib
 import json
 import os
 import pytest
@@ -136,16 +138,13 @@ def test_delete_user_data_removes_history_and_memory(tmp_path, monkeypatch):
     monkeypatch.setattr(s, "WHITELIST_PATH", tmp_path / "whitelist.json")
 
     # Re-import storage so it picks up the patched paths
-    import importlib
     import storage
     importlib.reload(storage)
 
     state = BotState()
     state.conversation_histories["12345"] = [{"role": "user", "parts": ["hi"]}]
     state.conversation_memories["12345"] = "Anna likes hiking"
-    state.last_reply_times[12345] = __import__("datetime").datetime.now(
-        __import__("datetime").timezone.utc
-    )
+    state.last_reply_times[12345] = datetime.datetime.now(datetime.timezone.utc)
     state.meeting_signals_detected.add(12345)
 
     result = delete_user_data(state, 12345)

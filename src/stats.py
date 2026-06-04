@@ -5,9 +5,9 @@ Appends events to data/stats.json, capped at 2000 entries.
 import json
 import logging
 from datetime import datetime, timezone, timedelta
-from pathlib import Path
 
-STATS_PATH = Path(__file__).resolve().parent.parent / "data" / "stats.json"
+from settings import STATS_PATH
+
 MAX_STATS_ENTRIES = 2000
 
 

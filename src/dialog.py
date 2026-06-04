@@ -1,6 +1,5 @@
 import asyncio
 import datetime
-import logging
 import random
 
 from ai_client import generate_conversation_response
@@ -11,12 +10,14 @@ from settings import (
     TYPING_SPEED_CPS,
     compute_reply_delay,
 )
-from logging_setup import redact
+from logging_setup import BotLogger, redact
 from meeting_detector import detect_meeting_signal
-from operator_notify import operator_notify
 from stats import record_event
 from storage import save_histories
 from utils import get_message_text
+
+# Module-level logger for dispatcher events (no chat_id yet)
+_log = BotLogger("DIALOG")
 
 
 async def _persist_histories(state):
@@ -32,17 +33,14 @@ async def private_chat_handler(client, message, state, adapter):
     to a Pyrogram message object across a multi-hour delay.
     """
     chat_id = message.chat.id
-    # Extract scalar values immediately; do not pass message into the task
     user_name = message.from_user.first_name if message.from_user else "Unknown"
 
     if chat_id in state.whitelist_ids:
-        logging.info(
-            f"[DISPATCHER] User (ID: {chat_id}) is in whitelist. Ignoring."
-        )
+        _log.info(f"User (ID: {chat_id}) is in whitelist. Ignoring.", chat_id=chat_id)
         return
 
     await adapter.mark_read(chat_id)
-    logging.info(f"[DISPATCHER] Message from user {chat_id} marked as read.")
+    _log.info(f"Message from user {chat_id} marked as read.", chat_id=chat_id)
 
     # Accumulate message text for burst detection
     text = get_message_text(message)
@@ -53,9 +51,7 @@ async def private_chat_handler(client, message, state, adapter):
 
     if chat_id in state.active_dialogue_tasks:
         state.active_dialogue_tasks[chat_id].cancel()
-        logging.info(
-            f"[DISPATCHER] User {chat_id} wrote again. Timer restarted."
-        )
+        _log.info(f"User {chat_id} wrote again. Timer restarted.", chat_id=chat_id)
 
     # Pass scalar values only — no reference to the Pyrogram message object
     task = asyncio.create_task(
@@ -70,11 +66,11 @@ async def process_dialogue_task(client, chat_id: int, user_name: str, state, ada
     Accepts chat_id and user_name as plain scalars — not a Pyrogram message
     object — so there is no lifetime risk during long delays.
     """
+    # Scoped logger: every log line from this task carries chat_id automatically
+    log = BotLogger("DIALOG", chat_id=chat_id)
+
     try:
-        logging.info(
-            f"[DIALOG] Waiting {GRACE_PERIOD_SECONDS}s in case user {chat_id} "
-            "is still typing..."
-        )
+        log.info(f"Waiting {GRACE_PERIOD_SECONDS}s in case user is still typing...")
         await asyncio.sleep(GRACE_PERIOD_SECONDS)
 
         # Collect all messages buffered during the grace period
@@ -82,30 +78,21 @@ async def process_dialogue_task(client, chat_id: int, user_name: str, state, ada
         if buffered:
             user_message = "\n".join(buffered)
             if len(buffered) > 1:
-                logging.info(
-                    f"[DIALOG] Combined {len(buffered)} buffered messages "
-                    f"for user {chat_id}."
-                )
+                log.info(f"Combined {len(buffered)} buffered messages.")
         else:
             # Buffer was empty — message had no text (e.g. media with no caption)
-            logging.warning(
-                f"[DIALOG] No buffered messages for user {chat_id}. Cancelling."
-            )
+            log.warning("No buffered messages. Cancelling.")
             return
 
         # Sanitize at the dispatch boundary
         user_message = sanitize_user_input(user_message)
         if not user_message:
-            logging.warning(
-                f"[DIALOG] Message for user {chat_id} was empty after sanitization."
-            )
+            log.warning("Message was empty after sanitization.")
             return
 
         # Meeting signal detection
         if detect_meeting_signal(user_message):
-            logging.info(
-                f"[MEETING] 🎯 Meeting signal detected from user {chat_id}!"
-            )
+            log.info("🎯 Meeting signal detected!")
             state.meeting_signals_detected.add(chat_id)
             record_event("meeting_signal", {"chat_id": chat_id, "user_name": user_name})
             await adapter.notify_operator(
@@ -134,9 +121,8 @@ async def process_dialogue_task(client, chat_id: int, user_name: str, state, ada
                     pass
 
         delay = compute_reply_delay(gap_seconds)
-        logging.info(
-            f"[DIALOG] Reply for user {chat_id} in ~{delay // 60}m {delay % 60}s "
-            f"(gap: {gap_seconds:.0f}s)."
+        log.info(
+            f"Reply in ~{delay // 60}m {delay % 60}s (gap: {gap_seconds:.0f}s)."
         )
         await asyncio.sleep(delay)
 
@@ -147,14 +133,13 @@ async def process_dialogue_task(client, chat_id: int, user_name: str, state, ada
                 datetime.datetime.now(datetime.timezone.utc) - last_reply
             ).total_seconds()
             if elapsed < MIN_REPLY_INTERVAL_SEC:
-                logging.info(
-                    f"[DIALOG] Rate limiting user {chat_id}: "
-                    f"only {elapsed:.0f}s since last reply "
+                log.info(
+                    f"Rate limiting: only {elapsed:.0f}s since last reply "
                     f"(min: {MIN_REPLY_INTERVAL_SEC}s). Skipping."
                 )
                 return
 
-        logging.info(f"[DIALOG] Generating reply for user {chat_id}...")
+        log.info("Generating reply...")
 
         if not state.conversation_histories.get(chat_id_str):
             record_event("conversation_started", {"chat_id": chat_id})
@@ -163,28 +148,23 @@ async def process_dialogue_task(client, chat_id: int, user_name: str, state, ada
         asyncio.create_task(_persist_histories(state))
 
         if not ai_response or not ai_response.strip():
-            logging.warning(
-                f"[DIALOG] Empty AI response for user {chat_id}. Skipping send."
-            )
+            log.warning("Empty AI response. Skipping send.")
             await adapter.notify_operator(
                 f"⚠️ API failure for {user_name} (ID: {chat_id}). Fallback message sent."
             )
             return
 
         if "|||" in ai_response:
-            logging.info(f"[DIALOG] Sending in ladder mode for user {chat_id}.")
+            log.info("Sending in ladder mode.")
             parts = [p.strip() for p in ai_response.split("|||") if p.strip()]
             if not parts:
-                logging.warning(
-                    f"[DIALOG] Ladder split produced no parts for user {chat_id}. "
-                    "Skipping send."
-                )
+                log.warning("Ladder split produced no parts. Skipping send.")
                 return
             for part in parts:
                 typing_delay = (len(part) / TYPING_SPEED_CPS) + random.uniform(0.5, 2.0)
                 await adapter.show_typing(chat_id)
-                logging.info(
-                    f"[DIALOG] Simulating typing {typing_delay:.1f}s "
+                log.info(
+                    f"Simulating typing {typing_delay:.1f}s "
                     f"(part length: {len(part)} chars)"
                 )
                 await asyncio.sleep(typing_delay)
@@ -197,8 +177,8 @@ async def process_dialogue_task(client, chat_id: int, user_name: str, state, ada
         else:
             typing_delay = (len(ai_response) / TYPING_SPEED_CPS) + random.uniform(0.5, 2.0)
             await adapter.show_typing(chat_id)
-            logging.info(
-                f"[DIALOG] Simulating typing {typing_delay:.1f}s "
+            log.info(
+                f"Simulating typing {typing_delay:.1f}s "
                 f"(message length: {len(ai_response)} chars)"
             )
             await asyncio.sleep(typing_delay)
@@ -211,13 +191,15 @@ async def process_dialogue_task(client, chat_id: int, user_name: str, state, ada
 
         state.last_reply_times[chat_id] = datetime.datetime.now(datetime.timezone.utc)
         record_event("reply_sent", {"chat_id": chat_id, "ladder": "|||" in ai_response})
-        logging.info(f"[DIALOG] Full reply for user {chat_id} sent.")
+        log.info("Full reply sent.")
     except asyncio.CancelledError:
-        logging.info(f"[DISPATCHER] Task for user {chat_id} cancelled.")
+        _log.info(f"Task for user {chat_id} cancelled.", chat_id=chat_id)
     except Exception as e:
-        logging.error(
-            f"[DIALOG] Error in dialogue task for user {chat_id}: {e}", exc_info=True
+        _log.error(
+            f"Error in dialogue task for user {chat_id}: {e}", chat_id=chat_id
         )
+        import traceback
+        _log.error(traceback.format_exc())
     finally:
         state.active_dialogue_tasks.pop(chat_id, None)
         state.message_buffers.pop(chat_id, None)
