@@ -9,7 +9,7 @@ from config import (
     BOT_USERNAME,
     KNOWN_SYSTEM_MESSAGES,
 )
-from utils import get_message_text
+from utils import get_message_text, safe_send_message
 
 
 async def leomatch_handler(client, message, state):
@@ -78,7 +78,7 @@ async def process_leomatch_message(client, text: str, state, is_startup: bool = 
     if "1. View profiles" in text:
         logging.info("[LEOMATCH-EXECUTOR] Main menu. Pressing '1'.")
         await asyncio.sleep(2)
-        await client.send_message(BOT_USERNAME, "1")
+        await safe_send_message(client, BOT_USERNAME, "1")
         return
 
     match = ANKET_PATTERN.match(text)
@@ -98,11 +98,11 @@ async def process_leomatch_message(client, text: str, state, is_startup: bool = 
         if should_like:
             logging.info("[LEOMATCH-EXECUTOR] Profile approved. Liking...")
             await asyncio.sleep(3)
-            await client.send_message(BOT_USERNAME, "💌 / 📹")
+            await safe_send_message(client, BOT_USERNAME, "💌 / 📹")
         else:
             logging.info("[LEOMATCH-EXECUTOR] Profile rejected. Disliking...")
             await asyncio.sleep(3)
-            await client.send_message(BOT_USERNAME, "👎")
+            await safe_send_message(client, BOT_USERNAME, "👎")
 
         state.last_action_time = datetime.datetime.now(datetime.timezone.utc)
         logging.info(
@@ -125,7 +125,7 @@ async def process_leomatch_message(client, text: str, state, is_startup: bool = 
                 )
             try:
                 await asyncio.sleep(5)
-                await client.send_message(BOT_USERNAME, intro_message)
+                await safe_send_message(client, BOT_USERNAME, intro_message)
 
                 # Store opener AFTER confirmed send (fixes ISSUE-17)
                 state.sent_openers.append({

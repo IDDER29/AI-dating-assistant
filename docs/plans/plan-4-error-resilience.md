@@ -19,7 +19,7 @@ _Week: 2 | Prerequisite: Plan 1 | Can run parallel to Plan 3_
 
 ## Task 4.1 — FloodWait Handler with Retry
 
-**Status:** ⬜ Not started
+**Status:** ✅ Done
 **Files:** `src/utils.py`, `src/leomatch.py`, `src/dialog.py`
 **Estimated effort:** 1 hour
 **Depends on:** Nothing (independent)
@@ -132,7 +132,7 @@ Affected lines in `leomatch.py`:
 
 ## Task 4.2 — Per-User Reply Rate Limiting
 
-**Status:** ⬜ Not started
+**Status:** ✅ Done
 **Files:** `src/state.py`, `src/dialog.py`, `src/config.py`
 **Estimated effort:** 45 minutes
 **Depends on:** Nothing (independent)
@@ -210,7 +210,7 @@ logging.info(f"[DIALOG] Full reply for {user_name} sent.")
 
 ## Task 4.3 — SIGHUP Whitelist Hot-Reload
 
-**Status:** ⬜ Not started
+**Status:** ✅ Done
 **File:** `src/main.py`
 **Estimated effort:** 30 minutes
 **Depends on:** Plan 1 Task 1.4 (signal handler pattern established)
@@ -278,11 +278,10 @@ Add this workflow to the deployment notes in `docs/TECHNICAL-REFERENCE.md` §14.
 ## Completion Checklist
 
 ```
-[ ] Task 4.1 — FloodWait handler: all send_message() calls replaced, retry verified
-[ ] Task 4.2 — Per-user rate limit: verified for rapid-fire messages, independent users
-[ ] Task 4.3 — SIGHUP whitelist reload: verified without restart
-[ ] Full smoke test: send many rapid messages to same user, verify rate limiting
-[ ] Full smoke test: send FloodWait scenario, verify retry and recovery
+[x] Task 4.1 — safe_send_message() in utils.py; all send_message() calls replaced in dialog.py and leomatch.py
+[x] Task 4.2 — MIN_REPLY_INTERVAL_SEC=45 in config.py; last_reply_times in state.py; check added in dialog.py after delay sleep
+[x] Task 4.3 — _handle_sighup() in main.py; signal registered before asyncio.run()
+[ ] Full smoke test: rapid messages, FloodWait scenario, SIGHUP whitelist reload
 [ ] Update plan status in plans/README.md
 ```
 

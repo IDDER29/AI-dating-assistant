@@ -8,11 +8,12 @@ from pyrogram import enums
 from ai_client import generate_conversation_response
 from config import (
     GRACE_PERIOD_SECONDS,
+    MIN_REPLY_INTERVAL_SEC,
     TYPING_SPEED_CPS,
     compute_reply_delay,
 )
 from storage import save_histories
-from utils import get_message_text
+from utils import get_message_text, safe_send_message
 
 
 async def _persist_histories(state):
@@ -104,6 +105,20 @@ async def process_dialogue_task(client, message, state):
         )
         await asyncio.sleep(delay)
 
+        # Per-user rate limit: prevent one user from flooding the API
+        last_reply = state.last_reply_times.get(chat_id)
+        if last_reply:
+            elapsed = (
+                datetime.datetime.now(datetime.timezone.utc) - last_reply
+            ).total_seconds()
+            if elapsed < MIN_REPLY_INTERVAL_SEC:
+                logging.info(
+                    f"[DIALOG] Rate limiting {user_name}: "
+                    f"only {elapsed:.0f}s since last reply "
+                    f"(min: {MIN_REPLY_INTERVAL_SEC}s). Skipping."
+                )
+                return
+
         logging.info(f"[DIALOG] Time is up. Generating reply for {user_name}...")
 
         ai_response = await generate_conversation_response(chat_id, user_message, state)
@@ -130,7 +145,7 @@ async def process_dialogue_task(client, message, state):
                     f"[DIALOG] Simulating typing {typing_delay:.1f}s for part: '{part}'"
                 )
                 await asyncio.sleep(typing_delay)
-                await client.send_message(chat_id, part)
+                await safe_send_message(client, chat_id, part)
         else:
             typing_delay = (len(ai_response) / TYPING_SPEED_CPS) + random.uniform(0.5, 2.0)
             await client.send_chat_action(chat_id, enums.ChatAction.TYPING)
@@ -138,8 +153,9 @@ async def process_dialogue_task(client, message, state):
                 f"[DIALOG] Simulating typing {typing_delay:.1f}s for message: '{ai_response}'"
             )
             await asyncio.sleep(typing_delay)
-            await client.send_message(chat_id, ai_response)
+            await safe_send_message(client, chat_id, ai_response)
 
+        state.last_reply_times[chat_id] = datetime.datetime.now(datetime.timezone.utc)
         logging.info(f"[DIALOG] Full reply for {user_name} sent.")
     except asyncio.CancelledError:
         logging.info(f"[DISPATCHER] Task for chat with {user_name} cancelled.")

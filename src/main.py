@@ -22,8 +22,23 @@ def _handle_sigterm(signum, frame):
     raise KeyboardInterrupt
 
 
+def _handle_sighup(signum, frame):
+    """Reload the whitelist from disk without restarting."""
+    state = get_state()
+    if state:
+        from storage import load_whitelist
+        load_whitelist(state)
+        logging.info(
+            f"[SYSTEM] Whitelist reloaded via SIGHUP. "
+            f"Users in list: {len(state.whitelist_ids)}"
+        )
+    else:
+        logging.warning("[SYSTEM] SIGHUP received but state not initialized yet.")
+
+
 if __name__ == "__main__":
     signal.signal(signal.SIGTERM, _handle_sigterm)
+    signal.signal(signal.SIGHUP, _handle_sighup)
     try:
         asyncio.run(run())
     except (UserDeactivated, AuthKeyUnregistered) as e:
