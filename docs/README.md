@@ -35,6 +35,23 @@ docs/
 | [analysis/architectural-critique.md](analysis/architectural-critique.md) | Analysis | Staff-engineer critique: design flaws, coupling failures, concrete refactoring proposals, alternative architecture | 2026-06-04 |
 | [analysis/product-gaps.md](analysis/product-gaps.md) | **Gap register** | 24 product gaps, each linked to source documents, classified by severity, prioritized by impact | 2026-06-04 |
 
+| [TURN-VISION.md](TURN-VISION.md) | **Startup blueprint** | Complete product vision: problem, solution, market, monetization, roadmap, investment ask | 2026-06-04 |
+| [TURN-ORCHESTRATOR.md](TURN-ORCHESTRATOR.md) | **Technical spec** | Fork strategy, orchestrator class interface, sequence diagram, DB schema, state schema, implementation notes | 2026-06-04 |
+
+## TURN Startup Knowledge Base
+
+The `TURN/` folder at the repo root is the operating system for the startup itself. It supersedes `TURN-VISION.md` and `TURN-ORCHESTRATOR.md` in this folder — those files are preserved for history but the TURN/ folder is the live source of truth.
+
+| Folder | Purpose |
+|--------|---------|
+| [TURN/](../TURN/README.md) | Master index — start here |
+| [TURN/vision/](../TURN/vision/) | Core insight, product evolution arc, competitive positioning |
+| [TURN/product/](../TURN/product/) | MVP scope, feature registry, personas, user journeys |
+| [TURN/market/](../TURN/market/) | Market opportunity, competitive landscape |
+| [TURN/technical/](../TURN/technical/) | Architecture, data model, process flow, AI design, integrations |
+| [TURN/decisions/](../TURN/decisions/) | Architecture Decision Records (ADR-001 through ADR-005) |
+| [TURN/build/](../TURN/build/) | Implementation plan, known risks |
+
 ## Principles
 
 - Update an existing document instead of creating a new one whenever content overlaps.
