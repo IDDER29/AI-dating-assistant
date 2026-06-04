@@ -2,7 +2,7 @@ import asyncio
 import datetime
 import logging
 
-from ai_client import generate_first_message
+from ai_client import classify_profile_quality, generate_first_message
 from config import (
     ACTION_COOLDOWN_SECONDS,
     ANKET_PATTERN,
@@ -87,18 +87,26 @@ async def process_leomatch_message(client, text: str, state, is_startup: bool = 
         logging.info(
             f"[LEOMATCH-EXECUTOR] Profile '{match.group(1).strip()}' saved to memory."
         )
-        description = match.group(4)
-        if description and len(description.strip()) > 10:
-            logging.info("[LEOMATCH-EXECUTOR] Profile with description. Liking...")
+        description = (match.group(4) or "").strip()
+
+        if description:
+            should_like = await classify_profile_quality(description, state)
+        else:
+            should_like = False
+            logging.info("[LEOMATCH-EXECUTOR] No description. Disliking.")
+
+        if should_like:
+            logging.info("[LEOMATCH-EXECUTOR] Profile approved. Liking...")
             await asyncio.sleep(3)
             await client.send_message(BOT_USERNAME, "💌 / 📹")
         else:
-            logging.info("[LEOMATCH-EXECUTOR] Profile without description. Disliking...")
+            logging.info("[LEOMATCH-EXECUTOR] Profile rejected. Disliking...")
             await asyncio.sleep(3)
             await client.send_message(BOT_USERNAME, "👎")
+
         state.last_action_time = datetime.datetime.now(datetime.timezone.utc)
         logging.info(
-            f"[LEOMATCH-EXECUTOR] Cooldown for {ACTION_COOLDOWN_SECONDS} sec. started."
+            f"[LEOMATCH-EXECUTOR] Cooldown for {ACTION_COOLDOWN_SECONDS}s started."
         )
         return
 
@@ -108,20 +116,30 @@ async def process_leomatch_message(client, text: str, state, is_startup: bool = 
             intro_message = await generate_first_message(state.last_seen_anket_text, state)
             if len(intro_message) > 300:
                 logging.warning(
-                    "[LEOMATCH-EXECUTOR] AI generated too long message "
-                    f"({len(intro_message)} chars). Using fallback."
+                    f"[LEOMATCH-EXECUTOR] AI message too long ({len(intro_message)} chars). "
+                    "Using fallback."
                 )
                 intro_message = (
-                    "your profile caught my eye, but my brain is striking today and writing poems) "
-                    "tell me something about yourself that's not there"
+                    "your profile caught my eye, but my brain is on strike today) "
+                    "tell me something about yourself that's not in the profile"
                 )
-            await asyncio.sleep(5)
-            await client.send_message(BOT_USERNAME, intro_message)
-            state.last_seen_anket_text = None
-            logging.info("[LEOMATCH-EXECUTOR] Message sent, memory cleared.")
+            try:
+                await asyncio.sleep(5)
+                await client.send_message(BOT_USERNAME, intro_message)
+
+                # Store opener AFTER confirmed send (fixes ISSUE-17)
+                state.sent_openers.append({
+                    "text": intro_message,
+                    "sent_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                })
+                state.sent_openers = state.sent_openers[-5:]
+                state.last_seen_anket_text = None
+                logging.info("[LEOMATCH-EXECUTOR] Opener sent and stored. Memory cleared.")
+            except Exception as e:
+                logging.error(f"[LEOMATCH-EXECUTOR] Failed to send opener: {e}")
         else:
             logging.warning(
-                "[LEOMATCH-EXECUTOR] Message request, but profile not found in memory. "
+                "[LEOMATCH-EXECUTOR] Write message request but no profile in memory. "
                 "Ignoring."
             )
         return

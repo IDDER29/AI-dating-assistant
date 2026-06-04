@@ -1,6 +1,8 @@
 """
 Project configuration and constants.
 """
+import math
+import random
 from pathlib import Path
 import os
 import re
@@ -12,6 +14,7 @@ load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data"
 HISTORY_PATH = DATA_DIR / "conversation_histories.json"
+MEMORY_PATH = DATA_DIR / "conversation_memories.json"
 WHITELIST_PATH = DATA_DIR / "whitelist.json"
 LOG_FILE_PATH = BASE_DIR / "ai_bot_logs.txt"
 
@@ -123,6 +126,32 @@ COMMUNICATION RULES:
 - **Stop factors (if you see this in the dialogue, lose interest):** Conversations about exes and any attempts to scam you or beg for something. Immediate minus.
 ---
 """
+
+def compute_reply_delay(gap_seconds: float) -> int:
+    """
+    Compute a natural reply delay based on time since last message.
+    Short gaps → fast replies. Longer gaps → increasingly slower replies.
+    Returns delay in seconds.
+    """
+    if gap_seconds < 120:
+        return random.randint(15, 45)
+    elif gap_seconds < 900:
+        return random.randint(15, 90)
+    elif gap_seconds < 3600:
+        p_medium = min(0.8, (gap_seconds - 900) / 2700)
+        if random.random() < p_medium:
+            return random.randint(120, 600)
+        return random.randint(15, 90)
+    elif gap_seconds < 86400:
+        p_long = min(0.25, (gap_seconds - 3600) / 82800 * 0.25)
+        if random.random() < p_long:
+            return random.randint(1800, 7200)
+        return random.randint(300, 1200)
+    else:
+        if random.random() < 0.05:
+            return random.randint(3600, 10800)
+        return random.randint(300, 1800)
+
 
 ANKET_PATTERN = re.compile(
     r"^(.+?),\s*(\d+),\s*(.+?)(?:[-–—]\s*(.*))?$", re.DOTALL

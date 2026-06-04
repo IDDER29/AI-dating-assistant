@@ -4,7 +4,7 @@ import os
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
-from config import HISTORY_PATH, WHITELIST_PATH
+from config import HISTORY_PATH, MEMORY_PATH, WHITELIST_PATH
 
 
 def load_json_data(filepath: str | Path, default_data):
@@ -97,6 +97,15 @@ def prune_stale_histories(state, max_age_days: int = 90) -> int:
             f"(older than {max_age_days} days)."
         )
     return len(stale_ids)
+
+
+def load_memories(state):
+    state.conversation_memories = load_json_data(MEMORY_PATH, {})
+    logging.info("Conversation memories loaded.")
+
+
+def save_memories(state):
+    save_json_data(MEMORY_PATH, state.conversation_memories)
 
 
 def load_whitelist(state):

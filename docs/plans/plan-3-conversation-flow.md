@@ -23,7 +23,7 @@ _Week: 2 | Prerequisite: Plans 1 + 2 complete | Must complete before: Plan 5_
 
 ## Task 3.1 — Store Opener in Conversation History
 
-**Status:** ⬜ Not started
+**Status:** ✅ Done
 **Files:** `src/state.py`, `src/leomatch.py`, `src/ai_client.py`
 **Estimated effort:** 2 hours
 **Depends on:** Plan 1 complete (reliable storage), Plan 2 Task 2.1
@@ -124,7 +124,7 @@ if chat_id_str not in state.conversation_histories or \
 
 ## Task 3.2 — Burst Message Accumulation
 
-**Status:** ⬜ Not started
+**Status:** ✅ Done
 **Files:** `src/state.py`, `src/dialog.py`
 **Estimated effort:** 1.5 hours
 **Depends on:** Nothing (independent)
@@ -210,7 +210,7 @@ finally:
 
 ## Task 3.3 — Intelligent Profile Quality Filter
 
-**Status:** ⬜ Not started
+**Status:** ✅ Done
 **Files:** `src/ai_client.py`, `src/leomatch.py`
 **Estimated effort:** 2 hours
 **Depends on:** Plan 2 Tasks 2.1, 2.2
@@ -300,7 +300,7 @@ if match:
 
 ## Task 3.4 — Persistent Conversation Memory
 
-**Status:** ⬜ Not started
+**Status:** ✅ Done
 **Files:** `src/state.py`, `src/ai_client.py`, `src/storage.py`, `src/app.py`, `src/config.py`
 **Estimated effort:** 3 hours
 **Depends on:** Plan 1 complete, Plan 2 Task 2.1
@@ -408,7 +408,7 @@ if memory and history_for_api:
 
 ## Task 3.5 — Smooth Reply Delay Curve
 
-**Status:** ⬜ Not started
+**Status:** ✅ Done
 **Files:** `src/config.py`, `src/dialog.py`
 **Estimated effort:** 1 hour
 **Depends on:** Nothing (independent)
@@ -501,12 +501,12 @@ await asyncio.sleep(delay)
 ## Completion Checklist
 
 ```
-[ ] Task 3.1 — Opener stored and injected: verify first reply references opener
-[ ] Task 3.2 — Burst accumulation: verify all 3 burst messages reach AI
-[ ] Task 3.3 — Profile quality filter: verify AI classification (4 test cases)
-[ ] Task 3.4 — Conversation memory: verify facts persist beyond 20-turn window
-[ ] Task 3.5 — Smooth delay curve: verify no cliff at 15-minute boundary
-[ ] ISSUE-17 fix: verify opener cleared only after confirmed send (implicit in 3.1)
+[x] Task 3.1 — sent_openers in state; opener stored after confirmed send; injected on first reply
+[x] Task 3.2 — message_buffers in state; burst messages joined with \n in process_dialogue_task
+[x] Task 3.3 — classify_profile_quality() in ai_client.py; wired into leomatch.py
+[x] Task 3.4 — conversation_memories in state; load/save_memories in storage.py; _update_memory every 4 turns; memory injected into API history
+[x] Task 3.5 — compute_reply_delay() in config.py; tiered binary logic replaced in dialog.py
+[x] ISSUE-17 — last_seen_anket_text cleared only after successful send
 [ ] Full end-to-end smoke test: profile → opener → conversation → memory → meeting
 [ ] Update plan status in plans/README.md
 ```

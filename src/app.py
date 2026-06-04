@@ -11,7 +11,7 @@ from dialog import private_chat_handler
 from leomatch import leomatch_handler, process_leomatch_message
 from logging_setup import setup_logging
 from state import BotState
-from storage import load_histories, load_whitelist, prune_stale_histories, save_histories
+from storage import load_histories, load_memories, load_whitelist, prune_stale_histories, save_histories
 from utils import get_message_text
 
 _STATE = None
@@ -51,6 +51,7 @@ async def run():
     pruned = prune_stale_histories(state, MAX_CONVERSATION_AGE_DAYS)
     if pruned > 0:
         save_histories(state)
+    load_memories(state)
     load_whitelist(state)
 
     async with state.app:

@@ -8,9 +8,8 @@ from pyrogram import enums
 from ai_client import generate_conversation_response
 from config import (
     GRACE_PERIOD_SECONDS,
-    REPLY_DELAY_CONFIG,
-    SESSION_TIMEOUT_MINUTES,
     TYPING_SPEED_CPS,
+    compute_reply_delay,
 )
 from storage import save_histories
 from utils import get_message_text
@@ -37,6 +36,13 @@ async def private_chat_handler(client, message, state):
         f"[DISPATCHER] Message from {message.from_user.first_name} marked as read."
     )
 
+    # Accumulate message text for burst detection
+    text = get_message_text(message)
+    if text:
+        if chat_id not in state.message_buffers:
+            state.message_buffers[chat_id] = []
+        state.message_buffers[chat_id].append(text)
+
     if chat_id in state.active_dialogue_tasks:
         state.active_dialogue_tasks[chat_id].cancel()
         logging.info(
@@ -58,52 +64,47 @@ async def process_dialogue_task(client, message, state):
         )
         await asyncio.sleep(GRACE_PERIOD_SECONDS)
 
-        chat_id_str = str(chat_id)
-        is_new_session = True
-        if chat_id_str in state.conversation_histories and state.conversation_histories[chat_id_str]:
-            last_msg_timestamp_str = state.conversation_histories[chat_id_str][-1].get(
-                "timestamp"
-            )
-            if last_msg_timestamp_str:
-                last_msg_time = datetime.datetime.fromisoformat(last_msg_timestamp_str)
-                time_since_last_msg = (
-                    datetime.datetime.now(datetime.timezone.utc) - last_msg_time
-                ).total_seconds()
-                if time_since_last_msg < SESSION_TIMEOUT_MINUTES * 60:
-                    is_new_session = False
-
-        delay_config = REPLY_DELAY_CONFIG["active_session"]
-        mode = "active_session"
-        if is_new_session:
-            logging.info(f"[DIALOG] Detected NEW session with {user_name}.")
-            rand = random.random()
-            config_new = REPLY_DELAY_CONFIG["new_session"]
-            if rand < config_new["long"]["chance"]:
-                mode = "long"
-                delay_config = config_new["long"]
-            elif rand < config_new["long"]["chance"] + config_new["medium"]["chance"]:
-                mode = "medium"
-                delay_config = config_new["medium"]
-            else:
-                mode = "fast"
-                delay_config = config_new["fast"]
+        # Collect all buffered messages accumulated during the grace period
+        buffered = state.message_buffers.pop(chat_id, [])
+        if buffered:
+            user_message = "\n".join(buffered)
+            if len(buffered) > 1:
+                logging.info(
+                    f"[DIALOG] Combined {len(buffered)} buffered messages for {user_name}."
+                )
         else:
-            logging.info(f"[DIALOG] Continuing ACTIVE session with {user_name}.")
+            user_message = get_message_text(message)
+            if not user_message:
+                logging.warning(
+                    f"[DIALOG] No message content for {user_name}. Cancelling."
+                )
+                return
 
-        delay = random.randint(delay_config["min_sec"], delay_config["max_sec"])
+        # Compute natural reply delay based on gap since last message
+        chat_id_str = str(chat_id)
+        gap_seconds = 0.0
+        if (chat_id_str in state.conversation_histories and
+                state.conversation_histories[chat_id_str]):
+            last_ts_str = state.conversation_histories[chat_id_str][-1].get("timestamp")
+            if last_ts_str:
+                try:
+                    last_ts = datetime.datetime.fromisoformat(last_ts_str)
+                    if last_ts.tzinfo is None:
+                        last_ts = last_ts.replace(tzinfo=datetime.timezone.utc)
+                    gap_seconds = (
+                        datetime.datetime.now(datetime.timezone.utc) - last_ts
+                    ).total_seconds()
+                except ValueError:
+                    pass
+
+        delay = compute_reply_delay(gap_seconds)
         logging.info(
-            f"[DIALOG] Reply for {user_name} will be sent in ~{delay // 60}m "
-            f"{delay % 60}s (mode: {mode})."
+            f"[DIALOG] Reply for {user_name} in ~{delay // 60}m {delay % 60}s "
+            f"(gap: {gap_seconds:.0f}s)."
         )
         await asyncio.sleep(delay)
 
         logging.info(f"[DIALOG] Time is up. Generating reply for {user_name}...")
-        user_message = get_message_text(message)
-        if not user_message:
-            logging.warning(
-                f"[DIALOG] Last message from {user_name} has no text. Cancelling."
-            )
-            return
 
         ai_response = await generate_conversation_response(chat_id, user_message, state)
         asyncio.create_task(_persist_histories(state))
@@ -146,3 +147,4 @@ async def process_dialogue_task(client, message, state):
         logging.error(f"[DIALOG] Error in dialogue processing task: {e}", exc_info=True)
     finally:
         state.active_dialogue_tasks.pop(chat_id, None)
+        state.message_buffers.pop(chat_id, None)

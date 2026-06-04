@@ -14,6 +14,7 @@ from config import (
     MAX_HISTORY_LENGTH,
 )
 from output_validator import validate_response
+from storage import save_memories
 
 
 def initialize_ai(state):
@@ -106,6 +107,61 @@ async def generate_first_message(anket_text: str, state) -> str:
     return fallback_message
 
 
+async def classify_profile_quality(description: str, state) -> bool:
+    """
+    Returns True if the profile description is worth messaging.
+    Falls back to character-count logic if AI is unavailable.
+    """
+    if not state.model:
+        return len(description.strip()) > 10
+
+    prompt = (
+        f'Dating profile description: "{description}"\n\n'
+        "Is this profile worth sending a first message to?\n"
+        "Consider: genuine personality, conversation hooks, real effort.\n"
+        "Ignore: blank, bot-like, purely transactional, or copy-paste profiles.\n"
+        "Answer with only YES or NO."
+    )
+    result = await with_rate_limit_handling(lambda: state.model.generate_content(prompt))
+    if result and hasattr(result, "text"):
+        answer = result.text.strip().upper()
+        decision = answer.startswith("YES")
+        logging.info(
+            f"[AI] Profile classification: '{description[:50]}' → "
+            f"{'LIKE' if decision else 'DISLIKE'}"
+        )
+        return decision
+
+    return len(description.strip()) > 10
+
+
+async def _update_memory(chat_id_str: str, recent_turns: list, state):
+    """Extract and store key facts from recent turns into persistent memory."""
+    if not state.model:
+        return
+    existing = state.conversation_memories.get(chat_id_str, "")
+    turns_text = "\n".join(
+        f"{t['role'].upper()}: {t['parts'][0]}" for t in recent_turns
+    )
+    prompt = (
+        f"Existing notes about this person: {existing}\n\n"
+        f"Recent conversation:\n{turns_text}\n\n"
+        "Update the notes with any NEW key facts about the user "
+        "(their name, job, hobbies, stated preferences, important things they mentioned). "
+        "Be extremely concise — maximum 2 sentences. Facts only, no analysis. "
+        "If nothing new is mentioned, return the existing notes unchanged."
+    )
+    result = await with_rate_limit_handling(lambda: state.model.generate_content(prompt))
+    if result and hasattr(result, "text"):
+        updated = result.text.strip()
+        if updated:
+            state.conversation_memories[chat_id_str] = updated
+            asyncio.create_task(asyncio.to_thread(save_memories, state))
+            logging.info(
+                f"[AI] Memory updated for user {chat_id_str}: {updated[:80]}"
+            )
+
+
 async def generate_conversation_response(chat_id: int, user_message: str, state) -> str:
     """Generate a contextual reply in an existing dialog."""
     fallback_message = "hm, something went wrong, repeat that"
@@ -115,8 +171,21 @@ async def generate_conversation_response(chat_id: int, user_message: str, state)
     chat_id_str = str(chat_id)
     now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
-    if chat_id_str not in state.conversation_histories:
-        state.conversation_histories[chat_id_str] = []
+    # Inject the most recent opener as first model turn for brand-new conversations
+    if chat_id_str not in state.conversation_histories or \
+            not state.conversation_histories[chat_id_str]:
+        if state.sent_openers:
+            oldest_opener = state.sent_openers.pop(0)
+            state.conversation_histories[chat_id_str] = [{
+                "role": "model",
+                "parts": [oldest_opener["text"]],
+                "timestamp": oldest_opener["sent_at"],
+            }]
+            logging.info(
+                f"[AI] Injected sent opener as first model turn for user {chat_id}."
+            )
+        else:
+            state.conversation_histories[chat_id_str] = []
 
     user_turn = {"role": "user", "parts": [user_message], "timestamp": now_iso}
     state.conversation_histories[chat_id_str].append(user_turn)
@@ -130,6 +199,18 @@ async def generate_conversation_response(chat_id: int, user_message: str, state)
             {"role": str(msg["role"]), "parts": list(msg["parts"])}
             for msg in state.conversation_histories[chat_id_str]
         ]
+
+        # Inject persistent memory into first turn (API copy only, not stored history)
+        memory = state.conversation_memories.get(chat_id_str, "")
+        if memory and history_for_api:
+            history_for_api = list(history_for_api)
+            if history_for_api[0]["role"] == "user":
+                first_turn = dict(history_for_api[0])
+                first_turn["parts"] = [
+                    f"[About this person: {memory}]\n\n{first_turn['parts'][0]}"
+                ]
+                history_for_api[0] = first_turn
+
         history_to_send = history_for_api[:-1] if history_for_api else []
         chat_session = state.model.start_chat(history=history_to_send)
         last_parts = history_for_api[-1].get("parts", []) if history_for_api else [user_message]
@@ -157,6 +238,12 @@ async def generate_conversation_response(chat_id: int, user_message: str, state)
                 "parts": [ai_response],
                 "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
             })
+
+            # Update persistent memory every 4 turns
+            turns = state.conversation_histories[chat_id_str]
+            if len(turns) % 4 == 0 and len(turns) >= 4:
+                asyncio.create_task(_update_memory(chat_id_str, turns[-4:], state))
+
             return ai_response
 
         # API returned None — roll back user turn
