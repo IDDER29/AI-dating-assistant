@@ -1,0 +1,30 @@
+# Credentials — never commit
+src/credentials.py
+
+# Telegram session file
+*.session
+*.session-journal
+
+# Runtime data
+data/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# Environment
+.env
+
+# IDE
+.idea/
+.vscode/
+
+# Logs
+*.txt
+!README.txt

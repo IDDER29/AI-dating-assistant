@@ -6,11 +6,11 @@ import re
 import google.generativeai as genai
 from google.api_core import exceptions as google_exceptions
 
-from config import (
+from credentials import GEMINI_API_KEY
+from settings import (
     ANKET_PATTERN,
     CONVERSATION_SYSTEM_PROMPT,
     FIRST_MESSAGE_PROMPT,
-    GEMINI_API_KEY,
     MAX_HISTORY_LENGTH,
 )
 from output_validator import validate_response

@@ -7,14 +7,12 @@ from pyrogram import Client, filters
 from pyrogram.handlers import MessageHandler, EditedMessageHandler
 
 from ai_client import initialize_ai
-from config import (
+from credentials import API_ID, API_HASH, GEMINI_API_KEY
+from settings import (
     BOT_USERNAME,
-    GEMINI_API_KEY,
     HEARTBEAT_INTERVAL_HOURS,
     MAX_CONVERSATION_AGE_DAYS,
     SESSION_NAME,
-    API_HASH,
-    API_ID,
 )
 from dialog import private_chat_handler
 from leomatch import leomatch_handler, process_leomatch_message
@@ -22,6 +20,7 @@ from logging_setup import setup_logging
 from operator_notify import operator_notify
 from state import BotState
 from storage import load_histories, load_memories, load_whitelist, prune_stale_histories, save_histories
+from telegram_adapter import TelegramAdapter
 from utils import get_message_text
 
 _STATE = None
@@ -86,8 +85,10 @@ async def run():
     load_whitelist(state)
 
     async with state.app:
+        adapter = TelegramAdapter(state.app, BOT_USERNAME)
+
         try:
-            bot_peer = await state.app.resolve_peer(BOT_USERNAME)
+            bot_peer = await adapter.resolve_peer(BOT_USERNAME)
         except Exception as e:
             logging.critical(f"Could not find bot @{BOT_USERNAME}: {e}")
             return
@@ -96,8 +97,8 @@ async def run():
         logging.info("AI Dating Assistant (v37.0 'Stable Launch') started!")
         logging.info("=" * 50)
 
-        leomatch_cb = partial(leomatch_handler, state=state)
-        private_cb = partial(private_chat_handler, state=state)
+        leomatch_cb = partial(leomatch_handler, state=state, adapter=adapter)
+        private_cb = partial(private_chat_handler, state=state, adapter=adapter)
 
         state.app.add_handler(
             MessageHandler(
@@ -121,24 +122,19 @@ async def run():
         )
         logging.info("[SYSTEM] Handler for private dialogues registered.")
 
-        # Startup notification
-        await operator_notify(
-            state.app,
+        await adapter.notify_operator(
             f"🚀 Bot started\n"
             f"Conversations loaded: {len(state.conversation_histories)}\n"
             f"Whitelist entries: {len(state.whitelist_ids)}"
         )
 
         logging.info(f"[SYSTEM] Analyzing last message from @{BOT_USERNAME}...")
-        history = [
-            msg async for msg in state.app.get_chat_history(bot_peer.user_id, limit=1)
-        ]
-        last_message = history[0] if history else None
+        last_message = await adapter.get_last_bot_message()
         if last_message and (text := get_message_text(last_message)):
-            await process_leomatch_message(state.app, text, state, is_startup=True)
+            await process_leomatch_message(state.app, text, state, adapter=adapter, is_startup=True)
         else:
             logging.info(f"[{BOT_USERNAME.upper()}] Chat is empty. Sending start command.")
-            await state.app.send_message(BOT_USERNAME, "1")
+            await adapter.navigate_to_profiles()
 
         asyncio.create_task(_heartbeat(state.app, state))
         logging.info(

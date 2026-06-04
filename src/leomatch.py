@@ -3,17 +3,17 @@ import datetime
 import logging
 
 from ai_client import classify_profile_quality, generate_first_message
-from config import (
+from settings import (
     ACTION_COOLDOWN_SECONDS,
     ANKET_PATTERN,
-    BOT_USERNAME,
     KNOWN_SYSTEM_MESSAGES,
 )
+from state import PendingMatch
 from stats import record_event
-from utils import get_message_text, safe_send_message
+from utils import get_message_text
 
 
-async def leomatch_handler(client, message, state):
+async def leomatch_handler(client, message, state, adapter):
     """Dispatch messages coming from the dating bot."""
     event_type = "EDITED" if message.edit_date else "NEW"
     logging.info(f"[LEOMATCH-DISPATCHER] Received event (Type: {event_type})")
@@ -29,13 +29,13 @@ async def leomatch_handler(client, message, state):
                 "[LEOMATCH-DISPATCHER] New profile arrived. Old task cancelled."
             )
         state.leomatch_task = asyncio.create_task(
-            process_leomatch_task(client, message, state)
+            process_leomatch_task(client, message, state, adapter)
         )
     else:
-        await process_leomatch_message(client, text, state)
+        await process_leomatch_message(client, text, state, adapter=adapter)
 
 
-async def process_leomatch_task(client, message, state):
+async def process_leomatch_task(client, message, state, adapter):
     """Background task for handling the profile after cooldown."""
     try:
         time_since_last_action = (
@@ -50,7 +50,7 @@ async def process_leomatch_task(client, message, state):
 
         text = get_message_text(message)
         logging.info("[LEOMATCH-TASK] Cooldown over. Processing last profile.")
-        await process_leomatch_message(client, text, state)
+        await process_leomatch_message(client, text, state, adapter=adapter)
     except asyncio.CancelledError:
         logging.info(
             "[LEOMATCH-TASK] Task cancelled (fresher profile arrived)."
@@ -62,11 +62,9 @@ async def process_leomatch_task(client, message, state):
         )
 
 
-async def process_leomatch_message(client, text: str, state, is_startup: bool = False):
+async def process_leomatch_message(client, text: str, state, adapter=None, is_startup: bool = False):
     """Execute direct actions in the dating bot."""
     text_str = str(text) if text else ""
-    # use a local variable to help inference
-    # truncate for logging
     truncated_text = text_str[:120] if len(text_str) > 120 else text_str
     logging.info(f"[LEOMATCH-EXECUTOR] Analyzing text: \"{truncated_text}\"")
 
@@ -79,16 +77,21 @@ async def process_leomatch_message(client, text: str, state, is_startup: bool = 
     if "1. View profiles" in text:
         logging.info("[LEOMATCH-EXECUTOR] Main menu. Pressing '1'.")
         await asyncio.sleep(2)
-        await safe_send_message(client, BOT_USERNAME, "1")
+        if adapter:
+            await adapter.navigate_to_profiles()
         return
 
     match = ANKET_PATTERN.match(text)
     if match:
-        state.last_seen_anket_text = text
+        description = (match.group(4) or "").strip()
+        state.pending_match = PendingMatch(
+            anket_text=text,
+            liked_at=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            description=description,
+        )
         logging.info(
             f"[LEOMATCH-EXECUTOR] Profile '{match.group(1).strip()}' saved to memory."
         )
-        description = (match.group(4) or "").strip()
 
         if description:
             should_like = await classify_profile_quality(description, state)
@@ -100,14 +103,16 @@ async def process_leomatch_message(client, text: str, state, is_startup: bool = 
             logging.info("[LEOMATCH-EXECUTOR] Profile approved. Liking...")
             record_event("profile_liked", {"has_description": bool(description)})
             await asyncio.sleep(3)
-            await safe_send_message(client, BOT_USERNAME, "💌 / 📹")
+            if adapter:
+                await adapter.like_profile()
         else:
             logging.info("[LEOMATCH-EXECUTOR] Profile rejected. Disliking...")
             record_event("profile_disliked", {
                 "reason": "no_description" if not description else "ai_rejected"
             })
             await asyncio.sleep(3)
-            await safe_send_message(client, BOT_USERNAME, "👎")
+            if adapter:
+                await adapter.dislike_profile()
 
         state.last_action_time = datetime.datetime.now(datetime.timezone.utc)
         logging.info(
@@ -116,9 +121,9 @@ async def process_leomatch_message(client, text: str, state, is_startup: bool = 
         return
 
     if "Write a message for this user" in text:
-        if state.last_seen_anket_text:
+        if state.pending_match:
             logging.info("[LEOMATCH-EXECUTOR] Message request. Generating...")
-            intro_message = await generate_first_message(state.last_seen_anket_text, state)
+            intro_message = await generate_first_message(state.pending_match.anket_text, state)
             if len(intro_message) > 300:
                 logging.warning(
                     f"[LEOMATCH-EXECUTOR] AI message too long ({len(intro_message)} chars). "
@@ -130,15 +135,15 @@ async def process_leomatch_message(client, text: str, state, is_startup: bool = 
                 )
             try:
                 await asyncio.sleep(5)
-                await safe_send_message(client, BOT_USERNAME, intro_message)
+                if adapter:
+                    await adapter.send_opener(intro_message)
 
-                # Store opener AFTER confirmed send (fixes ISSUE-17)
                 state.sent_openers.append({
                     "text": intro_message,
                     "sent_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
                 })
                 state.sent_openers = state.sent_openers[-5:]
-                state.last_seen_anket_text = None
+                state.pending_match = None
                 record_event("opener_sent", {"length": len(intro_message)})
                 logging.info("[LEOMATCH-EXECUTOR] Opener sent and stored. Memory cleared.")
             except Exception as e:

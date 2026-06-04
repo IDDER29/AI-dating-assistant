@@ -4,7 +4,7 @@ import os
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
-from config import HISTORY_PATH, MEMORY_PATH, WHITELIST_PATH
+from settings import HISTORY_PATH, MEMORY_PATH, WHITELIST_PATH
 
 
 def load_json_data(filepath: str | Path, default_data):

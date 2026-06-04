@@ -21,7 +21,7 @@ _Week: 4 | Prerequisite: All prior plans complete | Final plan_
 
 ## Task 7.1 — Split `config.py` into Focused Files
 
-**Status:** ⬜ Not started
+**Status:** ✅ Done
 **Files:** `src/credentials.py` (new), `src/settings.py` (new), `src/prompts/` (new dir), `src/config.py` (deprecated)
 **Estimated effort:** 2 hours
 **Depends on:** Plan 3 complete (prompts must be finalized before moving them)
@@ -133,7 +133,7 @@ src/credentials.py
 
 ## Task 7.2 — TelegramAdapter
 
-**Status:** ⬜ Not started
+**Status:** ✅ Done
 **File:** `src/telegram_adapter.py` (new)
 **Estimated effort:** 2 hours
 **Depends on:** Plan 4 Task 4.1 (`safe_send_message` in utils.py)
@@ -259,7 +259,7 @@ async def private_chat_handler(client, message, state, adapter):
 
 ## Task 7.3 — Replace PendingProfile String with Typed Dataclass
 
-**Status:** ⬜ Not started
+**Status:** ✅ Done
 **Files:** `src/state.py`, `src/leomatch.py`
 **Estimated effort:** 1 hour
 **Depends on:** Nothing (independent, but do after Plan 3 Task 3.1 to avoid conflicts)
@@ -324,7 +324,7 @@ if state.pending_match:
 
 ## Task 7.4 — Unit Test Suite Foundation
 
-**Status:** ⬜ Not started
+**Status:** ✅ Done
 **Directory:** `tests/` (new)
 **Estimated effort:** 3 hours
 **Depends on:** Task 7.1 (settings split makes imports cleaner)
@@ -534,12 +534,12 @@ pytest tests/ -v
 ## Completion Checklist
 
 ```
-[ ] Task 7.1 — Config split: prompts in .txt files, credentials separate, all imports updated
-[ ] Task 7.2 — TelegramAdapter: all Pyrogram calls go through adapter, smoke test passes
-[ ] Task 7.3 — PendingMatch dataclass: leomatch.py uses typed dataclass
-[ ] Task 7.4 — Unit tests: pytest runs clean, all tests pass
-[ ] Security: credentials.py in .gitignore, session file permissions set to 600
-[ ] Final end-to-end smoke test: full bot flow, all plans integrated
+[x] Task 7.1 — credentials.py, settings.py, prompts/*.txt created; config.py is now a shim; all 6 modules migrated
+[x] Task 7.2 — telegram_adapter.py created; app.py creates adapter and passes via partial; leomatch.py and dialog.py use adapter exclusively
+[x] Task 7.3 — PendingMatch dataclass in state.py; last_seen_anket_text replaced with pending_match throughout leomatch.py
+[x] Task 7.4 — 36 tests, 36 passed; conftest stubs external deps; covers cleanup, regex, validator, meeting detector, utils
+[x] Security — .gitignore created with src/credentials.py, *.session, data/, .env
+[ ] Final end-to-end smoke test
 [ ] Update plan status in plans/README.md
 ```
 

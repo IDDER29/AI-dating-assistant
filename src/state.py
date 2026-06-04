@@ -4,8 +4,16 @@ from typing import Any, Dict, List, Optional, Set
 
 
 @dataclass
+class PendingMatch:
+    anket_text: str
+    liked_at: str
+    description: str = ""
+    opener_text: Optional[str] = None
+
+
+@dataclass
 class BotState:
-    last_seen_anket_text: Optional[str] = None
+    pending_match: Optional[PendingMatch] = None
     last_action_time: datetime.datetime = field(
         default_factory=lambda: datetime.datetime.min.replace(
             tzinfo=datetime.timezone.utc

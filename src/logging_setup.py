@@ -1,7 +1,7 @@
 import logging
 from logging.handlers import RotatingFileHandler
 
-from config import LOG_FILE_PATH
+from settings import LOG_FILE_PATH
 
 
 def setup_logging():

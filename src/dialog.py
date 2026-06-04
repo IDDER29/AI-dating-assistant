@@ -3,10 +3,8 @@ import datetime
 import logging
 import random
 
-from pyrogram import enums
-
 from ai_client import generate_conversation_response
-from config import (
+from settings import (
     GRACE_PERIOD_SECONDS,
     MIN_REPLY_INTERVAL_SEC,
     TYPING_SPEED_CPS,
@@ -16,7 +14,7 @@ from meeting_detector import detect_meeting_signal
 from operator_notify import operator_notify
 from stats import record_event
 from storage import save_histories
-from utils import get_message_text, safe_send_message
+from utils import get_message_text
 
 
 async def _persist_histories(state):
@@ -24,7 +22,7 @@ async def _persist_histories(state):
     await asyncio.to_thread(save_histories, state)
 
 
-async def private_chat_handler(client, message, state):
+async def private_chat_handler(client, message, state, adapter):
     """Dispatch incoming private messages."""
     chat_id = message.chat.id
 
@@ -35,7 +33,7 @@ async def private_chat_handler(client, message, state):
         )
         return
 
-    await client.read_chat_history(chat_id)
+    await adapter.mark_read(chat_id)
     logging.info(
         f"[DISPATCHER] Message from {message.from_user.first_name} marked as read."
     )
@@ -54,11 +52,11 @@ async def private_chat_handler(client, message, state):
             "Timer restarted."
         )
 
-    task = asyncio.create_task(process_dialogue_task(client, message, state))
+    task = asyncio.create_task(process_dialogue_task(client, message, state, adapter))
     state.active_dialogue_tasks[chat_id] = task
 
 
-async def process_dialogue_task(client, message, state):
+async def process_dialogue_task(client, message, state, adapter):
     """Background task for a full reply cycle."""
     chat_id = message.chat.id
     user_name = message.from_user.first_name
@@ -91,8 +89,7 @@ async def process_dialogue_task(client, message, state):
             )
             state.meeting_signals_detected.add(chat_id)
             record_event("meeting_signal", {"chat_id": chat_id, "user_name": user_name})
-            await operator_notify(
-                client,
+            await adapter.notify_operator(
                 f"🎯 MEETING SUGGESTED\n\n"
                 f"User: {user_name} (ID: {chat_id})\n"
                 f"Message: \"{user_message[:300]}\"\n\n"
@@ -151,8 +148,7 @@ async def process_dialogue_task(client, message, state):
             logging.warning(
                 f"[DIALOG] Received empty AI response for {user_name}. Skipping send."
             )
-            await operator_notify(
-                client,
+            await adapter.notify_operator(
                 f"⚠️ API failure for {user_name} (ID: {chat_id}). Fallback message sent."
             )
             return
@@ -167,29 +163,27 @@ async def process_dialogue_task(client, message, state):
                 return
             for part in parts:
                 typing_delay = (len(part) / TYPING_SPEED_CPS) + random.uniform(0.5, 2.0)
-                await client.send_chat_action(chat_id, enums.ChatAction.TYPING)
+                await adapter.show_typing(chat_id)
                 logging.info(
                     f"[DIALOG] Simulating typing {typing_delay:.1f}s for part: '{part}'"
                 )
                 await asyncio.sleep(typing_delay)
-                sent = await safe_send_message(client, chat_id, part)
+                sent = await adapter.send_reply(chat_id, part)
                 if not sent:
-                    await operator_notify(
-                        client,
+                    await adapter.notify_operator(
                         f"⚠️ Failed to deliver message to {user_name} (ID: {chat_id}) "
                         "after 3 FloodWait retries."
                     )
         else:
             typing_delay = (len(ai_response) / TYPING_SPEED_CPS) + random.uniform(0.5, 2.0)
-            await client.send_chat_action(chat_id, enums.ChatAction.TYPING)
+            await adapter.show_typing(chat_id)
             logging.info(
                 f"[DIALOG] Simulating typing {typing_delay:.1f}s for message: '{ai_response}'"
             )
             await asyncio.sleep(typing_delay)
-            sent = await safe_send_message(client, chat_id, ai_response)
+            sent = await adapter.send_reply(chat_id, ai_response)
             if not sent:
-                await operator_notify(
-                    client,
+                await adapter.notify_operator(
                     f"⚠️ Failed to deliver message to {user_name} (ID: {chat_id}) "
                     "after 3 FloodWait retries."
                 )

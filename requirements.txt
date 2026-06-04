@@ -2,3 +2,5 @@ google-generativeai
 pyrogram
 tgcrypto
 python-dotenv
+pytest
+pytest-asyncio
