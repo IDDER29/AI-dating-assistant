@@ -12,7 +12,13 @@ from config import (
     SESSION_TIMEOUT_MINUTES,
     TYPING_SPEED_CPS,
 )
+from storage import save_histories
 from utils import get_message_text
+
+
+async def _persist_histories(state):
+    """Persist conversation histories off the event loop."""
+    await asyncio.to_thread(save_histories, state)
 
 
 async def private_chat_handler(client, message, state):
@@ -100,10 +106,22 @@ async def process_dialogue_task(client, message, state):
             return
 
         ai_response = await generate_conversation_response(chat_id, user_message, state)
+        asyncio.create_task(_persist_histories(state))
+
+        if not ai_response or not ai_response.strip():
+            logging.warning(
+                f"[DIALOG] Received empty AI response for {user_name}. Skipping send."
+            )
+            return
 
         if "|||" in ai_response:
             logging.info(f"[DIALOG] Reply for {user_name} will be sent in 'ladder' mode.")
             parts = [p.strip() for p in ai_response.split("|||") if p.strip()]
+            if not parts:
+                logging.warning(
+                    f"[DIALOG] Ladder split produced no parts for {user_name}. Skipping send."
+                )
+                return
             for part in parts:
                 typing_delay = (len(part) / TYPING_SPEED_CPS) + random.uniform(0.5, 2.0)
                 await client.send_chat_action(chat_id, enums.ChatAction.TYPING)

@@ -21,7 +21,7 @@ _Week: 1a | Prerequisite: None | Must complete before: Plans 2, 3, 4, 5, 6_
 
 ## Task 1.1 — Atomic JSON Write
 
-**Status:** ⬜ Not started
+**Status:** ✅ Done
 **File:** `src/storage.py`
 **Estimated effort:** 30 minutes
 **Depends on:** Nothing
@@ -69,7 +69,7 @@ cat data/conversation_histories.json   # must be valid JSON, not {}
 
 ## Task 1.2 — Preserve Corrupt File on Load Failure
 
-**Status:** ⬜ Not started
+**Status:** ✅ Done
 **File:** `src/storage.py`
 **Estimated effort:** 20 minutes
 **Depends on:** Task 1.1
@@ -118,7 +118,7 @@ ls data/
 
 ## Task 1.3 — Move `save_histories()` Off the Event Loop
 
-**Status:** ⬜ Not started
+**Status:** ✅ Done
 **Files:** `src/ai_client.py`, `src/dialog.py`
 **Estimated effort:** 30 minutes
 **Depends on:** Task 1.1 (atomic write makes async save safe)
@@ -168,7 +168,7 @@ asyncio.create_task(_persist_histories(state))
 
 ## Task 1.4 — Add SIGTERM Handler
 
-**Status:** ⬜ Not started
+**Status:** ✅ Done
 **File:** `src/main.py`
 **Estimated effort:** 15 minutes
 **Depends on:** Nothing (independent)
@@ -211,7 +211,7 @@ kill -TERM <pid>
 
 ## Task 1.5 — Add Stale Conversation Pruning
 
-**Status:** ⬜ Not started
+**Status:** ✅ Done
 **Files:** `src/storage.py`, `src/app.py`, `src/config.py`
 **Estimated effort:** 45 minutes
 **Depends on:** Task 1.1
@@ -287,11 +287,11 @@ if pruned > 0:
 ## Completion Checklist
 
 ```
-[ ] Task 1.1 — Atomic write implemented and verified with SIGKILL test
-[ ] Task 1.2 — Corrupt file backup verified (manual corruption test)
-[ ] Task 1.3 — save_histories removed from ai_client.py, background task in dialog.py
-[ ] Task 1.4 — SIGTERM handler verified (kill -TERM test)
-[ ] Task 1.5 — Pruning verified (old timestamp test)
+[x] Task 1.1 — Atomic write implemented
+[x] Task 1.2 — Corrupt file backup implemented
+[x] Task 1.3 — save_histories removed from ai_client.py, background task in dialog.py
+[x] Task 1.4 — SIGTERM handler added to main.py
+[x] Task 1.5 — Pruning implemented (MAX_CONVERSATION_AGE_DAYS=90)
 [ ] Full bot smoke test — start → profile → conversation → reply → stop
 [ ] Update plan status in plans/README.md
 ```

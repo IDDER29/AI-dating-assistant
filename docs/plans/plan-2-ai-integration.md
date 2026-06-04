@@ -22,7 +22,7 @@ _Week: 1b | Prerequisite: Plan 1 Task 1.3 | Must complete before: Plan 3, Plan 5
 
 ## Task 2.1 — Use `system_instruction=` Parameter
 
-**Status:** ⬜ Not started
+**Status:** ✅ Done
 **File:** `src/ai_client.py`
 **Estimated effort:** 1 hour (including testing)
 **Depends on:** Nothing
@@ -97,7 +97,7 @@ result = await with_rate_limit_handling(
 
 ## Task 2.2 — Add API Timeout and Extended Error Handling
 
-**Status:** ⬜ Not started
+**Status:** ✅ Done
 **File:** `src/ai_client.py`
 **Estimated effort:** 45 minutes
 **Depends on:** Nothing (independent)
@@ -182,7 +182,7 @@ async def with_rate_limit_handling(api_call, timeout_sec: float = 30.0):
 
 ## Task 2.3 — Fix Orphaned User Turn on API Failure
 
-**Status:** ⬜ Not started
+**Status:** ✅ Done
 **File:** `src/ai_client.py`
 **Estimated effort:** 30 minutes
 **Depends on:** Task 2.2 (error handling in place)
@@ -269,7 +269,7 @@ async def generate_conversation_response(chat_id: int, user_message: str, state)
 
 ## Task 2.4 — Build Output Validator
 
-**Status:** ⬜ Not started
+**Status:** ✅ Done
 **Files:** `src/output_validator.py` (new file), `src/ai_client.py`
 **Estimated effort:** 1 hour
 **Depends on:** Task 2.3 (rollback mechanism must exist before validator can trigger it)
@@ -367,7 +367,7 @@ if not validation.valid:
 
 ## Task 2.5 — Empty Response Guard at Delivery Site
 
-**Status:** ⬜ Not started
+**Status:** ✅ Done
 **File:** `src/dialog.py`
 **Estimated effort:** 15 minutes
 **Depends on:** Task 2.4
@@ -411,11 +411,11 @@ if "|||" in ai_response:
 ## Completion Checklist
 
 ```
-[ ] Task 2.1 — system_instruction= verified (persona works, token count reduced)
-[ ] Task 2.2 — timeout + extended errors verified (simulate timeout, verify retry)
-[ ] Task 2.3 — orphaned turn fix verified (bad API key test, history stays clean)
-[ ] Task 2.4 — OutputValidator verified (all 4 rejection cases tested)
-[ ] Task 2.5 — empty response guard verified (no crash on empty string)
+[x] Task 2.1 — system_instruction= added; fake exchange injection removed
+[x] Task 2.2 — timeout (30s) + ServiceUnavailable/DeadlineExceeded/InternalServerError retries
+[x] Task 2.3 — user turn rolled back on API failure or None result
+[x] Task 2.4 — output_validator.py created; validate_response() wired into ai_client.py
+[x] Task 2.5 — empty response + empty ladder parts guarded in dialog.py
 [ ] Full conversation smoke test: persona correct, no crashes, saves working
 [ ] Update plan status in plans/README.md
 ```

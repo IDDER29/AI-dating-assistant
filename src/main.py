@@ -10,6 +10,7 @@ Version: 1.1.0 (Public Release)
 """
 import asyncio
 import logging
+import signal
 
 from pyrogram.errors import UserDeactivated, AuthKeyUnregistered
 
@@ -17,7 +18,12 @@ from app import get_state, run
 from storage import save_histories
 
 
+def _handle_sigterm(signum, frame):
+    raise KeyboardInterrupt
+
+
 if __name__ == "__main__":
+    signal.signal(signal.SIGTERM, _handle_sigterm)
     try:
         asyncio.run(run())
     except (UserDeactivated, AuthKeyUnregistered) as e:

@@ -6,12 +6,12 @@ from pyrogram import Client, filters
 from pyrogram.handlers import MessageHandler, EditedMessageHandler
 
 from ai_client import initialize_ai
-from config import BOT_USERNAME, SESSION_NAME, API_HASH, API_ID, GEMINI_API_KEY
+from config import BOT_USERNAME, SESSION_NAME, API_HASH, API_ID, GEMINI_API_KEY, MAX_CONVERSATION_AGE_DAYS
 from dialog import private_chat_handler
 from leomatch import leomatch_handler, process_leomatch_message
 from logging_setup import setup_logging
 from state import BotState
-from storage import load_histories, load_whitelist
+from storage import load_histories, load_whitelist, prune_stale_histories, save_histories
 from utils import get_message_text
 
 _STATE = None
@@ -48,6 +48,9 @@ async def run():
         return
 
     load_histories(state)
+    pruned = prune_stale_histories(state, MAX_CONVERSATION_AGE_DAYS)
+    if pruned > 0:
+        save_histories(state)
     load_whitelist(state)
 
     async with state.app:
