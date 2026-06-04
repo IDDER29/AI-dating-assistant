@@ -1,0 +1,50 @@
+[Unit]
+Description=AI Dating Assistant Telegram Bot
+# Start after network is available — Telegram and Gemini APIs require connectivity
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+
+# ── Deployment identity ───────────────────────────────────────────────────────
+# Change User and WorkingDirectory to match your server setup
+User=developer
+WorkingDirectory=/home/developer/AI-dating-assistant
+
+# ── Startup ───────────────────────────────────────────────────────────────────
+ExecStart=/usr/bin/python3 src/main.py
+
+# ── Shutdown ──────────────────────────────────────────────────────────────────
+# systemd sends SIGTERM; the bot's _handle_sigterm routes it to graceful shutdown.
+# TimeoutStopSec must exceed the shutdown_gracefully() timeout (10s tasks + 5s leomatch + 5s persist).
+TimeoutStopSec=30s
+
+# ── Restart policy ────────────────────────────────────────────────────────────
+# Restart on non-zero exit (crash) or signal death, but not on clean exit or
+# authorisation errors (UserDeactivated / AuthKeyUnregistered exit 0 after logging).
+Restart=on-failure
+RestartSec=30s
+# Cap restart attempts: 5 restarts in 10 minutes, then give up
+StartLimitIntervalSec=600
+StartLimitBurst=5
+
+# ── Environment ───────────────────────────────────────────────────────────────
+# Load credentials from .env file — keeps secrets out of the unit file
+EnvironmentFile=/home/developer/AI-dating-assistant/.env
+
+# ── Logging ───────────────────────────────────────────────────────────────────
+# stdout/stderr go to systemd journal: journalctl -u ai-dating-assistant -f
+# The bot also writes to ai_bot_logs.txt via RotatingFileHandler.
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ai-dating-assistant
+
+# ── Security hardening (optional) ────────────────────────────────────────────
+# Prevents the bot from gaining new privileges through setuid/setgid
+NoNewPrivileges=true
+# Private /tmp — the bot doesn't use /tmp, but this prevents cross-process leaks
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

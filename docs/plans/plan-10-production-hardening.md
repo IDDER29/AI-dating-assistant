@@ -48,7 +48,7 @@ Additionally:
 
 ## Task 10.1 — Graceful Shutdown of In-Flight Tasks
 
-**Status:** ⬜ Not started
+**Status:** ✅ Done
 **Files:** `src/main.py`, `src/app.py`
 **Estimated effort:** 2 hours
 **Depends on:** Plan 1 complete (storage layer is safe)
@@ -278,7 +278,7 @@ if __name__ == "__main__":
 
 ## Task 10.2 — Fix Message Object Lifetime in Dialogue Tasks
 
-**Status:** ⬜ Not started
+**Status:** ✅ Done
 **Files:** `src/dialog.py`
 **Estimated effort:** 1 hour
 **Depends on:** Nothing (independent)
@@ -413,7 +413,7 @@ Note: Remove the `from utils import get_message_text` call inside `process_dialo
 
 ## Task 10.3 — Migrate from Pyrogram to Pyrofork
 
-**Status:** ⬜ Not started
+**Status:** ✅ Done
 **Files:** `requirements.txt`, `src/telegram_adapter.py`, `src/main.py`
 **Estimated effort:** 1.5 hours
 **Depends on:** Plan 7 Task 7.2 complete (TelegramAdapter in place)
@@ -509,7 +509,7 @@ python src/main.py
 
 ## Task 10.4 — Systemd Service Unit
 
-**Status:** ⬜ Not started
+**Status:** ✅ Done
 **Files:** `deploy/ai-dating-assistant.service` (new file), `docs/DEPLOYMENT.md` (new file)
 **Estimated effort:** 45 minutes
 **Depends on:** Task 10.1 (graceful shutdown must work before setting RestartSec policy)
@@ -675,12 +675,12 @@ sudo systemctl stop ai-dating-assistant
 ## Completion Checklist
 
 ```
-[ ] Task 10.1 — Graceful shutdown: SIGTERM waits for tasks, saves data, verified with active task
-[ ] Task 10.2 — Message lifetime: process_dialogue_task accepts chat_id/user_name, no message object
-[ ] Task 10.3 — pyrofork migration: pip install done, tests pass, smoke test passes
-[ ] Task 10.4 — Systemd unit: service file created, starts/stops correctly, auto-restart verified
-[ ] pytest: all existing tests pass after changes
-[ ] Integration smoke test: start → conversation → SIGTERM → verify data intact
+[x] Task 10.1 — shutdown_gracefully() in app.py; _run_with_graceful_shutdown() in main.py; cancels tasks with 10s wait; final save of histories + memories
+[x] Task 10.2 — private_chat_handler extracts chat_id/user_name immediately; process_dialogue_task signature changed to (client, chat_id, user_name, state, adapter); no Pyrogram message object held across delays
+[x] Task 10.3 — pyrogram uninstalled; pyrofork 2.3.69 installed; imports unchanged; tests pass
+[x] Task 10.4 — deploy/ai-dating-assistant.service created with SIGTERM/RestartSec/TimeoutStopSec/EnvironmentFile; docs/DEPLOYMENT.md written with full operations reference
+[x] 53 tests pass
+[ ] Live server smoke test: systemctl start → conversation → systemctl stop → verify data saved
 [ ] Update plan status in plans/README.md
 ```
 

@@ -1,5 +1,5 @@
 google-generativeai
-pyrogram
+pyrofork
 tgcrypto
 python-dotenv
 pytest

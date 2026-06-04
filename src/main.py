@@ -2,11 +2,8 @@
 AI Assistant for Telegram Dating Bot
 =========================================
 
-This script automates interaction with the Telegram dating bot (@leomatchbot),
-using the Google Gemini model to generate human-like responses and lead dialogues.
-
-Author: polikhronidi dev
-Version: 1.1.0 (Public Release)
+Entry point. Registers OS signal handlers, runs the application, and
+ensures a graceful shutdown (all data saved) on any exit signal.
 """
 import asyncio
 import logging
@@ -16,19 +13,19 @@ import stat
 
 from pyrogram.errors import UserDeactivated, AuthKeyUnregistered
 
-from app import get_state, run
-from storage import save_histories
+from app import get_state, run, shutdown_gracefully
+from logging_setup import setup_logging
 
 
 def _check_file_permissions():
     """
     Warn at startup if sensitive files have group- or world-readable permissions.
     Best-effort — warnings only, never blocks startup.
-    Skipped on Windows (no POSIX permission bits).
+    Skipped on Windows (different permission model).
     """
     import sys
     if sys.platform == "win32":
-        return  # Windows has different permission model; skip silently
+        return
     sensitive = [
         pathlib.Path(".env"),
         pathlib.Path("ai_dating_user.session"),
@@ -89,26 +86,47 @@ def _handle_sigusr1(signum, frame):
         logging.error(f"[SYSTEM] Error processing deletion requests: {e}")
 
 
+async def _run_with_graceful_shutdown():
+    """Wrap run() so KeyboardInterrupt triggers graceful shutdown before exit."""
+    try:
+        await run()
+    except (KeyboardInterrupt, asyncio.CancelledError):
+        logging.info("[SYSTEM] Shutdown signal received. Starting graceful shutdown...")
+        state = get_state()
+        if state:
+            await shutdown_gracefully(state)
+        raise
+
+
 if __name__ == "__main__":
+    setup_logging()
     _check_file_permissions()
+
+    # Log which Telegram library is running (pyrogram vs pyrofork)
+    try:
+        import pyrogram
+        logging.info(f"[SYSTEM] Telegram library: pyrogram {pyrogram.__version__}")
+    except Exception:
+        pass
+
     signal.signal(signal.SIGTERM, _handle_sigterm)
     signal.signal(signal.SIGHUP, _handle_sighup)
     signal.signal(signal.SIGUSR1, _handle_sigusr1)
+
     try:
-        asyncio.run(run())
+        asyncio.run(_run_with_graceful_shutdown())
     except (UserDeactivated, AuthKeyUnregistered) as e:
         logging.critical(
             f"Authorization error: {e}. Delete .session file and restart."
         )
     except KeyboardInterrupt:
-        logging.info("Script stopped by user. Saving history...")
-        state = get_state()
-        if state:
-            save_histories(state)
+        pass  # graceful shutdown already handled inside _run_with_graceful_shutdown
     except Exception as e:
         logging.critical(
             f"An unexpected critical error occurred: {e}", exc_info=True
         )
+        # Emergency save if graceful shutdown did not run
         state = get_state()
         if state:
+            from storage import save_histories
             save_histories(state)

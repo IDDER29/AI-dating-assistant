@@ -70,6 +70,54 @@ async def _heartbeat(app_client, state):
         )
 
 
+async def shutdown_gracefully(state):
+    """
+    Cancel all active tasks and wait up to 10s for them to finish their
+    finally blocks, then do a final authoritative save of all data.
+    Called from main.py when a shutdown signal is received.
+    """
+    logging.info(
+        f"[SHUTDOWN] Graceful shutdown initiated. "
+        f"Active dialogue tasks: {len(state.active_dialogue_tasks)}"
+    )
+
+    # Cancel every active dialogue task
+    tasks = list(state.active_dialogue_tasks.values())
+    if tasks:
+        for task in tasks:
+            task.cancel()
+        done, pending = await asyncio.wait(tasks, timeout=10.0)
+        if pending:
+            logging.warning(
+                f"[SHUTDOWN] {len(pending)} task(s) did not finish within 10s. "
+                "Proceeding with shutdown anyway."
+            )
+        else:
+            logging.info("[SHUTDOWN] All dialogue tasks finished cleanly.")
+
+    # Cancel the leomatch background task if running
+    if state.leomatch_task and not state.leomatch_task.done():
+        state.leomatch_task.cancel()
+        try:
+            await asyncio.wait_for(state.leomatch_task, timeout=5.0)
+        except (asyncio.CancelledError, asyncio.TimeoutError):
+            pass
+
+    # Drain any in-flight _persist_histories tasks (they finish in < 1s)
+    persist_tasks = [
+        t for t in asyncio.all_tasks()
+        if not t.done() and "_persist_histories" in repr(t)
+    ]
+    if persist_tasks:
+        await asyncio.wait(persist_tasks, timeout=5.0)
+
+    # Final authoritative save
+    from storage import save_histories, save_memories
+    save_histories(state)
+    save_memories(state)
+    logging.info("[SHUTDOWN] History and memories saved. Shutdown complete.")
+
+
 async def run():
     """Initialize and run the bot application."""
     global _STATE
