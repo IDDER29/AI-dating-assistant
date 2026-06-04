@@ -53,13 +53,20 @@ async def _heartbeat(app_client, state):
         history_count = len(state.conversation_histories)
         meeting_count = len(getattr(state, "meeting_signals_detected", set()))
 
+        model_name = getattr(state, "active_model_name", "unknown")
+        from stats import get_api_stats_summary
+        api_stats = get_api_stats_summary(hours=HEARTBEAT_INTERVAL_HOURS)
+
         await operator_notify(
             app_client,
             f"✅ Bot alive\n"
             f"Uptime: {uptime_hours}h {uptime_mins}m\n"
+            f"Model: {model_name}\n"
             f"Active conversations: {active_count}\n"
             f"Total conversations: {history_count}\n"
-            f"Meetings detected (session): {meeting_count}"
+            f"Meetings detected (session): {meeting_count}\n"
+            f"API calls (last {HEARTBEAT_INTERVAL_HOURS}h): {api_stats['calls']} "
+            f"({api_stats['failures']} failed, ~{api_stats['total_tokens']:,} tokens)"
         )
 
 

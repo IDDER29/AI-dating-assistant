@@ -9,27 +9,106 @@ from google.api_core import exceptions as google_exceptions
 from credentials import GEMINI_API_KEY
 from settings import (
     ANKET_PATTERN,
+    CHARS_PER_TOKEN_ESTIMATE,
     CONVERSATION_SYSTEM_PROMPT,
     FIRST_MESSAGE_PROMPT,
+    GEMINI_FALLBACK_MODEL,
+    GEMINI_PRIMARY_MODEL,
+    MAX_CONTEXT_TOKENS,
     MAX_HISTORY_LENGTH,
 )
 from input_sanitizer import sanitize_user_input
 from output_validator import validate_response
+from stats import record_event
 from storage import save_memories
 
 
+def _estimate_tokens(text: str) -> int:
+    """Rough token count: CHARS_PER_TOKEN_ESTIMATE chars per token (conservative for Ru/En mix)."""
+    return max(1, len(text) // CHARS_PER_TOKEN_ESTIMATE)
+
+
+def _estimate_history_tokens(history: list) -> int:
+    """Estimate total tokens in a conversation history list."""
+    total = 0
+    for turn in history:
+        for part in turn.get("parts", []):
+            total += _estimate_tokens(str(part))
+    return total
+
+
+def _record_api_call(result, call_type: str, chat_id_str: str = ""):
+    """
+    Read token usage metadata from a Gemini API response and record to stats.
+    Gemini response objects expose usage_metadata with prompt/response/total token counts.
+    Safe to call with result=None (records a failed call).
+    """
+    if result is None:
+        record_event("api_call", {
+            "type": call_type,
+            "status": "failed",
+            "chat_id": chat_id_str,
+        })
+        return
+
+    metadata = getattr(result, "usage_metadata", None)
+    if metadata:
+        record_event("api_call", {
+            "type": call_type,
+            "status": "ok",
+            "chat_id": chat_id_str,
+            "prompt_tokens": getattr(metadata, "prompt_token_count", 0),
+            "response_tokens": getattr(metadata, "candidates_token_count", 0),
+            "total_tokens": getattr(metadata, "total_token_count", 0),
+        })
+    else:
+        record_event("api_call", {
+            "type": call_type,
+            "status": "ok",
+            "chat_id": chat_id_str,
+        })
+
+
 def initialize_ai(state):
-    """Initialize the Gemini model with system_instruction."""
+    """
+    Initialize Gemini with the pinned primary model, falling back to the
+    latest-alias if the pinned version is unavailable.
+    Stores the active model name in state.active_model_name.
+    """
     try:
         genai.configure(api_key=GEMINI_API_KEY)
-        state.model = genai.GenerativeModel(
-            "gemini-1.5-flash-latest",
-            system_instruction=CONVERSATION_SYSTEM_PROMPT,
-        )
-        logging.info("Google Gemini model successfully initialized.")
     except Exception as e:
-        logging.error(f"Failed to configure Google Gemini model: {e}")
+        logging.error(f"[AI] Failed to configure Gemini API key: {e}")
         state.model = None
+        return
+
+    for model_name in [GEMINI_PRIMARY_MODEL, GEMINI_FALLBACK_MODEL]:
+        try:
+            state.model = genai.GenerativeModel(
+                model_name,
+                system_instruction=CONVERSATION_SYSTEM_PROMPT,
+            )
+            state.active_model_name = model_name
+            logging.info(f"[AI] Gemini model initialized: {model_name}")
+            if model_name == GEMINI_FALLBACK_MODEL:
+                logging.warning(
+                    f"[AI] Using fallback model '{model_name}' — primary model "
+                    f"'{GEMINI_PRIMARY_MODEL}' unavailable. Update GEMINI_PRIMARY_MODEL "
+                    "in settings.py when a new version is available."
+                )
+            return
+        except Exception as e:
+            logging.warning(
+                f"[AI] Could not initialize model '{model_name}': {e}. "
+                "Trying next candidate..."
+            )
+
+    logging.error(
+        "[AI] All Gemini model candidates failed to initialize. "
+        "Check GEMINI_API_KEY and model availability."
+    )
+    state.model = None
+    state.active_model_name = None
 
 
 def cleanup_ai_response(text: str) -> str:
@@ -43,8 +122,14 @@ def cleanup_ai_response(text: str) -> str:
 
 async def with_rate_limit_handling(api_call, timeout_sec: float = 30.0):
     """
-    Wrap a synchronous Gemini API call with timeout, retries, and full error
-    handling for rate limits, server errors, and network timeouts.
+    Execute a synchronous Gemini API call with:
+    - asyncio.to_thread (non-blocking)
+    - 30s timeout per attempt
+    - Up to 3 retries for transient errors:
+        ResourceExhausted (429), ServiceUnavailable (503),
+        DeadlineExceeded (504), InternalServerError (500), TimeoutError
+    - Single attempt then None for permanent errors:
+        NotFound (model deprecated), PermissionDenied (bad key)
     """
     for attempt in range(1, 4):
         try:
@@ -84,7 +169,25 @@ async def with_rate_limit_handling(api_call, timeout_sec: float = 30.0):
             )
             await asyncio.sleep(15)
 
+        except google_exceptions.NotFound as e:
+            logging.error(
+                f"[AI] Model not found: {e}. "
+                "The model version may be deprecated. "
+                "Update GEMINI_PRIMARY_MODEL in settings.py."
+            )
+            record_event("api_error", {"reason": "model_not_found", "error": str(e)[:100]})
+            return None
+
+        except google_exceptions.PermissionDenied as e:
+            logging.error(
+                f"[AI] Permission denied: {e}. "
+                "Check that GEMINI_API_KEY is valid and not revoked."
+            )
+            record_event("api_error", {"reason": "permission_denied", "error": str(e)[:100]})
+            return None
+
     logging.error("[AI] Failed to execute API request after 3 attempts.")
+    record_event("api_error", {"reason": "all_retries_exhausted"})
     return None
 
 
@@ -102,6 +205,7 @@ async def generate_first_message(anket_text: str, state) -> str:
 
     prompt = FIRST_MESSAGE_PROMPT.format(profile_text=profile_text)
     result = await with_rate_limit_handling(lambda: state.model.generate_content(prompt))
+    _record_api_call(result, "first_message")
 
     if result and hasattr(result, "text"):
         return cleanup_ai_response(getattr(result, "text"))
@@ -124,6 +228,7 @@ async def classify_profile_quality(description: str, state) -> bool:
         "Answer with only YES or NO."
     )
     result = await with_rate_limit_handling(lambda: state.model.generate_content(prompt))
+    _record_api_call(result, "profile_classify")
     if result and hasattr(result, "text"):
         answer = result.text.strip().upper()
         decision = answer.startswith("YES")
@@ -153,6 +258,7 @@ async def _update_memory(chat_id_str: str, recent_turns: list, state):
         "If nothing new is mentioned, return the existing notes unchanged."
     )
     result = await with_rate_limit_handling(lambda: state.model.generate_content(prompt))
+    _record_api_call(result, "memory_update", chat_id_str)
     if result and hasattr(result, "text"):
         updated = result.text.strip()
         if updated:
@@ -196,9 +302,13 @@ async def generate_conversation_response(chat_id: int, user_message: str, state)
     user_turn = {"role": "user", "parts": [user_message], "timestamp": now_iso}
     state.conversation_histories[chat_id_str].append(user_turn)
 
-    if len(state.conversation_histories[chat_id_str]) > MAX_HISTORY_LENGTH:
-        state.conversation_histories[chat_id_str] = \
-            state.conversation_histories[chat_id_str][-MAX_HISTORY_LENGTH:]
+    # Trim by estimated token budget first, keeping at least 4 turns for coherence.
+    history = state.conversation_histories[chat_id_str]
+    while len(history) > 4 and _estimate_history_tokens(history) > MAX_CONTEXT_TOKENS:
+        history.pop(0)
+    # Hard fallback: also cap by turn count to bound API payload size.
+    if len(history) > MAX_HISTORY_LENGTH:
+        state.conversation_histories[chat_id_str] = history[-MAX_HISTORY_LENGTH:]
 
     try:
         history_for_api = [
@@ -224,6 +334,7 @@ async def generate_conversation_response(chat_id: int, user_message: str, state)
         result = await with_rate_limit_handling(
             lambda: chat_session.send_message(last_parts)
         )
+        _record_api_call(result, "conversation", chat_id_str)
 
         if result and hasattr(result, "text"):
             ai_response = cleanup_ai_response(getattr(result, "text"))
@@ -249,6 +360,14 @@ async def generate_conversation_response(chat_id: int, user_message: str, state)
             turns = state.conversation_histories[chat_id_str]
             if len(turns) % 4 == 0 and len(turns) >= 4:
                 asyncio.create_task(_update_memory(chat_id_str, turns[-4:], state))
+
+            # Warn if context is getting large
+            estimated = _estimate_history_tokens(turns)
+            if estimated > MAX_CONTEXT_TOKENS * 0.8:
+                logging.warning(
+                    f"[AI] Context token estimate for {chat_id} is high: "
+                    f"~{estimated} tokens (budget: {MAX_CONTEXT_TOKENS})"
+                )
 
             return ai_response
 

@@ -106,6 +106,6 @@ Plan 11 is last — refactors and tests code that must be stable first.
 | Plan 6 | ✅ Done | 3 / 3 | operator_notify, heartbeat, critical event notifications |
 | Plan 7 | ✅ Done | 4 / 4 | Config split, TelegramAdapter, PendingMatch, 36 tests |
 | Plan 8 | ✅ Done | 5 / 5 | Input sanitizer, persona collapse, privacy logs, data deletion, file permissions |
-| Plan 9 | ⬜ Not started | 0 / 4 | |
+| Plan 9 | ✅ Done | 4 / 4 | Model pinning+fallback, token-aware trim, API usage tracking, error stats |
 | Plan 10 | ⬜ Not started | 0 / 4 | |
 | Plan 11 | ⬜ Not started | 0 / 6 | |

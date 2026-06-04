@@ -31,5 +31,6 @@ class BotState:
     meeting_signals_detected: Set[int] = field(default_factory=set)
     leomatch_task: Optional[Any] = None
     whitelist_ids: Set[int] = field(default_factory=set)
+    active_model_name: Optional[str] = None
     model: Optional[Any] = None
     app: Optional[Any] = None

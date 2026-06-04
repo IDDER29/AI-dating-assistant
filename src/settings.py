@@ -17,7 +17,17 @@ STATS_PATH = DATA_DIR / "stats.json"
 SESSION_NAME = "ai_dating_user"
 BOT_USERNAME = "leomatchbot"
 
+# Gemini model configuration.
+# PRIMARY: pinned to a specific, tested version — stable and predictable.
+# FALLBACK: auto-updating alias — used only if the primary version is unavailable.
+# To upgrade: change GEMINI_PRIMARY_MODEL, test, then deploy.
+# Check available versions: https://ai.google.dev/gemini-api/docs/models/gemini
+GEMINI_PRIMARY_MODEL = "gemini-1.5-flash-002"
+GEMINI_FALLBACK_MODEL = "gemini-1.5-flash-latest"
+
 MAX_CONVERSATION_AGE_DAYS = 90
+MAX_CONTEXT_TOKENS = 8000       # estimated token budget for conversation history
+CHARS_PER_TOKEN_ESTIMATE = 3    # conservative estimate; Cyrillic is ~2-3 chars/token
 ACTION_COOLDOWN_SECONDS = 70
 MIN_REPLY_INTERVAL_SEC = 45
 HEARTBEAT_INTERVAL_HOURS = 6

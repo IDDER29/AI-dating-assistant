@@ -49,7 +49,7 @@ Key facts about the current integration:
 
 ## Task 9.1 — Pin Model Version With Fallback Chain
 
-**Status:** ⬜ Not started
+**Status:** ✅ Done
 **Files:** `src/settings.py`, `src/ai_client.py`
 **Estimated effort:** 45 minutes
 **Depends on:** Nothing (independent)
@@ -219,7 +219,7 @@ await operator_notify(
 
 ## Task 9.2 — Token-Aware Context Window
 
-**Status:** ⬜ Not started
+**Status:** ✅ Done
 **Files:** `src/ai_client.py`, `src/settings.py`
 **Estimated effort:** 1.5 hours
 **Depends on:** Nothing (independent)
@@ -354,7 +354,7 @@ from settings import (
 
 ## Task 9.3 — API Usage Tracking
 
-**Status:** ⬜ Not started
+**Status:** ✅ Done
 **Files:** `src/ai_client.py`, `src/stats.py`
 **Estimated effort:** 45 minutes
 **Depends on:** Plan 5 complete (stats.py must exist)
@@ -529,7 +529,7 @@ await operator_notify(
 
 ## Task 9.4 — Add `NotFound` and `PermissionDenied` to Stats
 
-**Status:** ⬜ Not started
+**Status:** ✅ Done
 **File:** `src/ai_client.py`
 **Estimated effort:** 15 minutes
 **Depends on:** Task 9.1 (NotFound handling added there), Task 9.3 (stats recording)
@@ -580,13 +580,12 @@ return None
 ## Completion Checklist
 
 ```
-[ ] Task 9.1 — Model version pinned; fallback to latest alias works; NotFound caught
-[ ] Task 9.2 — Token-aware trim active; no context overflow possible; high-usage warning tested
-[ ] Task 9.3 — API calls recorded in stats.json with token counts; heartbeat shows summary
-[ ] Task 9.4 — NotFound and PermissionDenied recorded in stats; operator alerted
-[ ] Full smoke test: 10+ conversation turns, verify history trimming correct
-[ ] Heartbeat test: verify new heartbeat format with model name and API stats
-[ ] pytest — all existing tests still pass
+[x] Task 9.1 — GEMINI_PRIMARY_MODEL/FALLBACK_MODEL in settings.py; initialize_ai() tries both; active_model_name in BotState; NotFound + PermissionDenied caught in with_rate_limit_handling()
+[x] Task 9.2 — _estimate_tokens/_estimate_history_tokens helpers; token-budget trim replaces turn-count trim; MAX_CONTEXT_TOKENS=8000 in settings.py; high-context warning logs
+[x] Task 9.3 — _record_api_call() wired at all 4 API call sites; get_api_stats_summary() in stats.py; heartbeat shows model name + API stats
+[x] Task 9.4 — NotFound + PermissionDenied both record api_error event; all_retries_exhausted also recorded
+[x] 53 tests pass
+[ ] Live smoke test: verify model name logged at startup; verify api_call events in stats.json
 [ ] Update plan status in plans/README.md
 ```
 
