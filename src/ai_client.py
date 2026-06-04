@@ -120,7 +120,7 @@ def cleanup_ai_response(text: str) -> str:
     return cleaned_text.strip()
 
 
-async def with_rate_limit_handling(api_call, timeout_sec: float = 30.0):
+async def with_api_retry(api_call, timeout_sec: float = 30.0):
     """
     Execute a synchronous Gemini API call with:
     - asyncio.to_thread (non-blocking)
@@ -204,7 +204,7 @@ async def generate_first_message(anket_text: str, state) -> str:
         profile_text = "Profile description is short or meaningless"
 
     prompt = FIRST_MESSAGE_PROMPT.format(profile_text=profile_text)
-    result = await with_rate_limit_handling(lambda: state.model.generate_content(prompt))
+    result = await with_api_retry(lambda: state.model.generate_content(prompt))
     _record_api_call(result, "first_message")
 
     if result and hasattr(result, "text"):
@@ -227,7 +227,7 @@ async def classify_profile_quality(description: str, state) -> bool:
         "Ignore: blank, bot-like, purely transactional, or copy-paste profiles.\n"
         "Answer with only YES or NO."
     )
-    result = await with_rate_limit_handling(lambda: state.model.generate_content(prompt))
+    result = await with_api_retry(lambda: state.model.generate_content(prompt))
     _record_api_call(result, "profile_classify")
     if result and hasattr(result, "text"):
         answer = result.text.strip().upper()
@@ -257,7 +257,7 @@ async def _update_memory(chat_id_str: str, recent_turns: list, state):
         "Be extremely concise — maximum 2 sentences. Facts only, no analysis. "
         "If nothing new is mentioned, return the existing notes unchanged."
     )
-    result = await with_rate_limit_handling(lambda: state.model.generate_content(prompt))
+    result = await with_api_retry(lambda: state.model.generate_content(prompt))
     _record_api_call(result, "memory_update", chat_id_str)
     if result and hasattr(result, "text"):
         updated = result.text.strip()
@@ -331,7 +331,7 @@ async def generate_conversation_response(chat_id: int, user_message: str, state)
         chat_session = state.model.start_chat(history=history_to_send)
         last_parts = history_for_api[-1].get("parts", []) if history_for_api else [user_message]
 
-        result = await with_rate_limit_handling(
+        result = await with_api_retry(
             lambda: chat_session.send_message(last_parts)
         )
         _record_api_call(result, "conversation", chat_id_str)

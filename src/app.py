@@ -1,3 +1,19 @@
+"""
+Application entry point and lifecycle coordinator.
+
+Responsibilities:
+  - BotState initialisation and module wiring
+  - Pyrogram client lifecycle (start / stop)
+  - Handler registration
+  - Heartbeat background task
+  - Graceful shutdown coordination
+
+Does NOT implement:
+  - Scout logic            → leomatch.py
+  - Interlocutor logic     → dialog.py
+  - Storage operations     → storage.py
+  - AI generation          → ai_client.py
+"""
 import asyncio
 import datetime
 import logging
@@ -15,13 +31,12 @@ from settings import (
     SESSION_NAME,
 )
 from dialog import private_chat_handler
-from leomatch import leomatch_handler, process_leomatch_message
+from leomatch import leomatch_handler, replay_last_message
 from logging_setup import setup_logging
 from operator_notify import operator_notify
 from state import BotState
 from storage import load_histories, load_memories, load_whitelist, prune_stale_histories, save_histories
 from telegram_adapter import TelegramAdapter
-from utils import get_message_text
 
 _STATE = None
 
@@ -31,7 +46,7 @@ def get_state():
 
 
 def initialize_app(state):
-    """Validate configuration and initialize Pyrogram client."""
+    """Validate configuration and initialise Pyrogram client."""
     if not all([API_ID, API_HASH, GEMINI_API_KEY]):
         logging.critical(
             "CRITICAL ERROR: Missing environment variables TELEGRAM_API_ID, "
@@ -43,7 +58,7 @@ def initialize_app(state):
 
 
 async def _heartbeat(app_client, state):
-    """Send a periodic status message to operator's Saved Messages."""
+    """Send a periodic status message to the operator's Saved Messages."""
     while True:
         await asyncio.sleep(HEARTBEAT_INTERVAL_HOURS * 3600)
         active_count = len(state.active_dialogue_tasks)
@@ -52,8 +67,8 @@ async def _heartbeat(app_client, state):
         uptime_mins = int((uptime.total_seconds() % 3600) // 60)
         history_count = len(state.conversation_histories)
         meeting_count = len(getattr(state, "meeting_signals_detected", set()))
-
         model_name = getattr(state, "active_model_name", "unknown")
+
         from stats import get_api_stats_summary
         api_stats = get_api_stats_summary(hours=HEARTBEAT_INTERVAL_HOURS)
 
@@ -81,7 +96,6 @@ async def shutdown_gracefully(state):
         f"Active dialogue tasks: {len(state.active_dialogue_tasks)}"
     )
 
-    # Cancel every active dialogue task
     tasks = list(state.active_dialogue_tasks.values())
     if tasks:
         for task in tasks:
@@ -95,7 +109,6 @@ async def shutdown_gracefully(state):
         else:
             logging.info("[SHUTDOWN] All dialogue tasks finished cleanly.")
 
-    # Cancel the leomatch background task if running
     if state.leomatch_task and not state.leomatch_task.done():
         state.leomatch_task.cancel()
         try:
@@ -103,7 +116,6 @@ async def shutdown_gracefully(state):
         except (asyncio.CancelledError, asyncio.TimeoutError):
             pass
 
-    # Drain any in-flight _persist_histories tasks (they finish in < 1s)
     persist_tasks = [
         t for t in asyncio.all_tasks()
         if not t.done() and "_persist_histories" in repr(t)
@@ -111,7 +123,6 @@ async def shutdown_gracefully(state):
     if persist_tasks:
         await asyncio.wait(persist_tasks, timeout=5.0)
 
-    # Final authoritative save
     from storage import save_histories, save_memories
     save_histories(state)
     save_memories(state)
@@ -119,7 +130,7 @@ async def shutdown_gracefully(state):
 
 
 async def run():
-    """Initialize and run the bot application."""
+    """Initialise and run the bot application."""
     global _STATE
     setup_logging()
 
@@ -129,7 +140,7 @@ async def run():
     initialize_ai(state)
     initialize_app(state)
     if not state.model or not state.app:
-        logging.critical("Application cannot start due to initialization error.")
+        logging.critical("Application cannot start due to initialisation error.")
         return
 
     load_histories(state)
@@ -143,13 +154,13 @@ async def run():
         adapter = TelegramAdapter(state.app, BOT_USERNAME)
 
         try:
-            bot_peer = await adapter.resolve_peer(BOT_USERNAME)
+            await adapter.resolve_peer(BOT_USERNAME)
         except Exception as e:
             logging.critical(f"Could not find bot @{BOT_USERNAME}: {e}")
             return
 
         logging.info("=" * 50)
-        logging.info("AI Dating Assistant (v37.0 'Stable Launch') started!")
+        logging.info("AI Dating Assistant started!")
         logging.info("=" * 50)
 
         leomatch_cb = partial(leomatch_handler, state=state, adapter=adapter)
@@ -183,17 +194,11 @@ async def run():
             f"Whitelist entries: {len(state.whitelist_ids)}"
         )
 
-        logging.info(f"[SYSTEM] Analyzing last message from @{BOT_USERNAME}...")
-        last_message = await adapter.get_last_bot_message()
-        if last_message and (text := get_message_text(last_message)):
-            await process_leomatch_message(state.app, text, state, adapter=adapter, is_startup=True)
-        else:
-            logging.info(f"[{BOT_USERNAME.upper()}] Chat is empty. Sending start command.")
-            await adapter.navigate_to_profiles()
+        # Startup replay via leomatch — encapsulated in leomatch.py
+        await replay_last_message(state.app, state, adapter)
 
         asyncio.create_task(_heartbeat(state.app, state))
         logging.info(
-            f"[SYSTEM] Startup complete. Bot is running. "
-            f"Heartbeat every {HEARTBEAT_INTERVAL_HOURS}h."
+            f"[SYSTEM] Startup complete. Heartbeat every {HEARTBEAT_INTERVAL_HOURS}h."
         )
         await asyncio.Event().wait()

@@ -164,3 +164,34 @@ async def process_leomatch_message(client, text: str, state, adapter=None, is_st
             f"[LEOMATCH-EXECUTOR] Unrecognized text ({len(text_str)} chars): "
             f"'{redact(text_str, 30)}'"
         )
+
+
+async def replay_last_message(client, state, adapter):
+    """
+    Re-process the last message from @leomatchbot at startup.
+    Encapsulates startup replay so app.py has a stable single call-site.
+    If the last message was a profile card, the bot is ready to respond
+    to the 'Write a message for this user' prompt that may follow.
+    """
+    from settings import BOT_USERNAME
+    from utils import get_message_text
+
+    try:
+        last_message = await adapter.get_last_bot_message()
+    except Exception as e:
+        logging.error(f"[LEOMATCH] Failed to fetch last bot message: {e}")
+        last_message = None
+
+    if last_message and (text := get_message_text(last_message)):
+        logging.info(
+            f"[LEOMATCH] Startup replay: processing last message "
+            f"({len(text)} chars)"
+        )
+        await process_leomatch_message(
+            client, text, state, adapter=adapter, is_startup=True
+        )
+    else:
+        logging.info(
+            f"[{BOT_USERNAME.upper()}] No prior message found. Sending start command."
+        )
+        await adapter.navigate_to_profiles()
